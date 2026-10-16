@@ -1,0 +1,558 @@
+// Veritabanı şemasının tek kaynağı. Değişiklik akışı:
+//   1) Bu dosyayı düzenle
+//   2) npm run migrate:dev -- --name <aciklama>   (SQL üretir + dev DB'ye uygular)
+//   3) Üretilen migration.sql'i gözden geçir (CHECK kısıtları gibi Prisma'nın
+//      ifade edemediği kuralları gerekirse elle ekle) ve commit'le
+// Production: npm run migrate  (sadece bekleyen migration'ları uygular)
+//
+// Not: CHECK kısıtları ve citext extension'ı migration SQL'inde tanımlı;
+// Prisma bunları diff'e dahil etmez, dolayısıyla korunurlar.
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ---------------------------------------------------------------- Kullanıcılar
+model User {
+  id                  String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  email               String    @unique @db.Citext
+  name                String
+  passwordHash        String    @map("password_hash")
+  role                String    @default("user")
+  failedLoginAttempts Int       @default(0) @map("failed_login_attempts")
+  lockedUntil         DateTime? @map("locked_until") @db.Timestamptz(6)
+  passwordChangedAt   DateTime  @default(now()) @map("password_changed_at") @db.Timestamptz(6)
+  lastLoginAt         DateTime? @map("last_login_at") @db.Timestamptz(6)
+  createdAt           DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt           DateTime  @default(now()) @map("updated_at") @db.Timestamptz(6)
+
+  refreshTokens    RefreshToken[]
+  googleConnection GoogleConnection?
+  alerts           Alert[]
+  oauthStates      OAuthState[]
+  domains          Domain[]
+
+  @@map("users")
+}
+
+model RefreshToken {
+  id        String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId    String    @map("user_id") @db.Uuid
+  familyId  String    @map("family_id") @db.Uuid
+  tokenHash String    @unique @map("token_hash")
+  expiresAt DateTime  @map("expires_at") @db.Timestamptz(6)
+  revokedAt DateTime? @map("revoked_at") @db.Timestamptz(6)
+  userAgent String?   @map("user_agent")
+  ip        String?   @db.Inet
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([userId], map: "refresh_tokens_user_idx")
+  @@index([familyId], map: "refresh_tokens_family_idx")
+  @@map("refresh_tokens")
+}
+
+// ---------------------------------------------------------------- Google entegrasyonu
+model GoogleConnection {
+  userId          String   @id @map("user_id") @db.Uuid
+  googleEmail     String?  @map("google_email")
+  accessTokenEnc  String   @map("access_token_enc")
+  refreshTokenEnc String   @map("refresh_token_enc")
+  tokenExpiresAt  DateTime @map("token_expires_at") @db.Timestamptz(6)
+  scope           String
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@map("google_connections")
+}
+
+model OAuthState {
+  stateHash       String   @id @map("state_hash")
+  userId          String   @map("user_id") @db.Uuid
+  codeVerifierEnc String   @map("code_verifier_enc")
+  expiresAt       DateTime @map("expires_at") @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@map("oauth_states")
+}
+
+// ---------------------------------------------------------------- Alan adları
+model Domain {
+  id                String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId            String    @map("user_id") @db.Uuid
+  hostname          String
+  gscProperty       String?   @map("gsc_property")
+  syncStatus        String    @default("idle") @map("sync_status")
+  syncError         String?   @map("sync_error")
+  lastSyncedAt      DateTime? @map("last_synced_at") @db.Timestamptz(6)
+  createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  // Lokasyon bazlı sıralama ayarları: boş dizi = otomatik (site dili / o dilin tüm ülkeleri)
+  rankLanguages     String[]  @default([]) @map("rank_languages")
+  rankLocations     Int[]     @default([]) @map("rank_locations")
+  rankStatus        String    @default("idle") @map("rank_status")
+  rankError         String?   @map("rank_error")
+  rankUpdatedAt     DateTime? @map("rank_updated_at") @db.Timestamptz(6)
+  backlinkStatus    String    @default("idle") @map("backlink_status")
+  backlinkError     String?   @map("backlink_error")
+  backlinkUpdatedAt DateTime? @map("backlink_updated_at") @db.Timestamptz(6)
+  indexStatus       String    @default("idle") @map("index_status")
+  indexError        String?   @map("index_error")
+  indexUpdatedAt    DateTime? @map("index_updated_at") @db.Timestamptz(6)
+  sslExpiresAt      DateTime? @map("ssl_expires_at") @db.Timestamptz(6)
+
+  user                 User                   @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  rankSnapshots        RankSnapshot[]
+  rankChecks           RankCheck[]
+  gscDaily             GscDaily[]
+  gscQueryDaily        GscQueryDaily[]
+  gscPageDaily         GscPageDaily[]
+  gscCountryDaily      GscCountryDaily[]
+  gscDeviceDaily       GscDeviceDaily[]
+  gscQueryPage         GscQueryPage[]
+  gscQueryCountry      GscQueryCountry[]
+  gscQueryCountryDaily GscQueryCountryDaily[]
+  serpChecks           SerpCheck[]
+  backlinks            Backlink[]
+  alerts               Alert[]
+  indexInspections     IndexInspection[]
+  authoritySnapshots   AuthoritySnapshot[]
+  audits               Audit[]
+  pagespeedReports     PagespeedReport[]
+
+  @@unique([userId, hostname])
+  @@map("domains")
+}
+
+// ---------------------------------------------------------------- Search Console verisi
+model GscDaily {
+  domainId    String   @map("domain_id") @db.Uuid
+  date        DateTime @db.Date
+  clicks      Int
+  impressions Int
+  position    Float    @db.Real
+
+  domain Domain @relation(fields: [domainId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@id([domainId, date])
+  @@map("gsc_daily")
+}
+
+model GscQueryDaily {
+  domainId    String   @map("domain_id") @db.Uuid
+  date        DateTime @db.Date
+  query       String
+  clicks      Int
+  impressions Int
+  position    Float    @db.Real
+
+  domain Domain @relation(fields: [domainId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@id([domainId, date, query])
+  @@map("gsc_query_daily")
+}
+
+model GscPageDaily {
+  domainId    String   @map("domain_id") @db.Uuid
+  date        DateTime @db.Date
+  page        String
+  clicks      Int
+  impressions Int
+  position    Float    @db.Real
+
+  domain Domain @relation(fields: [domainId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@id([domainId, date, page])
+  @@map("gsc_page_daily")
+}
+
+model GscCountryDaily {
+  domainId    String   @map("domain_id") @db.Uuid
+  date        DateTime @db.Date
+  country     String
+  clicks      Int
+  impressions Int
+  position    Float    @db.Real
+
+  domain Domain @relation(fields: [domainId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@id([domainId, date, country])
+  @@map("gsc_country_daily")
+}
+
+model GscDeviceDaily {
+  domainId    String   @map("domain_id") @db.Uuid
+  date        DateTime @db.Date
+  device      String
+  clicks      Int
+  impressions Int
+  position    Float    @db.Real
+
+  domain Domain @relation(fields: [domainId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@id([domainId, date, device])
+  @@map("gsc_device_daily")
+}
+
+/// Anahtar kelime -> sıralanan URL eşleşmesi (son 28 gün toplamı)
+model GscQueryPage {
+  domainId    String @map("domain_id") @db.Uuid
+  query       String
+  page        String
+  clicks      Int
+  impressions Int
+  position    Float  @db.Real
+
+  domain Domain @relation(fields: [domainId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@id([domainId, query, page])
+  @@map("gsc_query_page")
+}
+
+/// Alan adı otorite metrikleri önbelleği (herkese açık veri; 30 gün geçerli): Open PageRank, Tranco, RDAP
+model DomainMetric {
+  domain       String    @id
+  opr          Float?    @db.Real
+  oprRank      Int?      @map("opr_rank")
+  trancoRank   Int?      @map("tranco_rank")
+  registeredAt DateTime? @map("registered_at") @db.Timestamptz(6)
+  error        String?
+  fetchedAt    DateTime  @default(now()) @map("fetched_at") @db.Timestamptz(6)
+
+  @@map("domain_metrics")
+}
+
+/// Hesaplanan otorite puanı ve öneriler (geçmiş trend için her hesaplama saklanır)
+model AuthoritySnapshot {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  domainId        String   @map("domain_id") @db.Uuid
+  score           Int
+  pillars         Json     @db.JsonB
+  metrics         Json     @db.JsonB
+  recommendations Json     @db.JsonB
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  domain Domain @relation(fields: [domainId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([domainId, createdAt(sort: Desc)], map: "authority_snapshots_domain_idx")
+  @@map("authority_snapshots")
+}
+
+/// Otomatik izlemenin ürettiği bildirimler (trafik/sıra düşüşü, yeni kritik sorun, site erişilemiyor, SSL, backlink kaybı)
+model Alert {
+  id        String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId    String    @map("user_id") @db.Uuid
+  domainId  String?   @map("domain_id") @db.Uuid
+  type      String
+  /// critical | warning | notice
+  severity  String
+  title     String
+  detail    String?
+  data      Json      @default("{}") @db.JsonB
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  readAt    DateTime? @map("read_at") @db.Timestamptz(6)
+
+  user   User    @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  domain Domain? @relation(fields: [domainId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([userId, createdAt(sort: Desc)], map: "alerts_user_idx")
+  @@index([domainId, type, createdAt(sort: Desc)], map: "alerts_domain_type_idx")
+  @@map("alerts")
+}
+
+/// Google URL Inspection API sonucu: sayfa Google'da indeksli mi, değilse neden
+model IndexInspection {
+  domainId        String    @map("domain_id") @db.Uuid
+  url             String
+  verdict         String?
+  coverageState   String?   @map("coverage_state")
+  indexingState   String?   @map("indexing_state")
+  robotsState     String?   @map("robots_state")
+  pageFetchState  String?   @map("page_fetch_state")
+  lastCrawl       DateTime? @map("last_crawl") @db.Timestamptz(6)
+  googleCanonical String?   @map("google_canonical")
+  userCanonical   String?   @map("user_canonical")
+  crawledAs       String?   @map("crawled_as")
+  richResults     Json?     @map("rich_results") @db.JsonB
+  error           String?
+  checkedAt       DateTime  @default(now()) @map("checked_at") @db.Timestamptz(6)
+
+  domain Domain @relation(fields: [domainId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@id([domainId, url])
+  @@index([domainId, verdict], map: "index_inspections_verdict_idx")
+  @@map("index_inspections")
+}
+
+/// Siteye gelen bağlantılar: Bing Webmaster API + Search Console CSV + elle ekleme; her biri tarayıcıyla doğrulanır
+model Backlink {
+  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  domainId      String    @map("domain_id") @db.Uuid
+  sourceUrl     String    @map("source_url")
+  sourceDomain  String    @map("source_domain")
+  targetUrl     String?   @map("target_url")
+  anchor        String?
+  rel           String?
+  /// unverified | active | lost | not_found | error
+  status        String    @default("unverified")
+  httpStatus    Int?      @map("http_status")
+  sourceNoindex Boolean   @default(false) @map("source_noindex")
+  outboundLinks Int?      @map("outbound_links")
+  riskScore     Int       @default(0) @map("risk_score")
+  riskReasons   String[]  @default([]) @map("risk_reasons")
+  sources       String[]  @default([])
+  error         String?
+  firstSeen     DateTime  @default(now()) @map("first_seen") @db.Timestamptz(6)
+  lastSeen      DateTime? @map("last_seen") @db.Timestamptz(6)
+  lastChecked   DateTime? @map("last_checked") @db.Timestamptz(6)
+  lostAt        DateTime? @map("lost_at") @db.Timestamptz(6)
+
+  domain Domain @relation(fields: [domainId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([domainId, sourceUrl])
+  @@index([domainId, sourceDomain], map: "backlinks_source_domain_idx")
+  @@index([domainId, status], map: "backlinks_status_idx")
+  @@map("backlinks")
+}
+
+/// Canlı Google sonucu doğrulaması (SerpApi): Search Console ortalamasını gerçek SERP ile karşılaştırmak için
+model SerpCheck {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  domainId       String   @map("domain_id") @db.Uuid
+  keyword        String
+  country        String
+  device         String   @default("desktop")
+  position       Int?
+  url            String?
+  correctedQuery String?  @map("corrected_query")
+  depth          Int
+  top            Json     @default("[]") @db.JsonB
+  checkedAt      DateTime @default(now()) @map("checked_at") @db.Timestamptz(6)
+
+  domain Domain @relation(fields: [domainId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([domainId, keyword, checkedAt(sort: Desc)], map: "serp_checks_domain_idx")
+  @@map("serp_checks")
+}
+
+/// Günlük anahtar kelime × ülke (Anahtar Kelimeler sekmesinde ülke filtresi ve kelime başına ülke kırılımı)
+model GscQueryCountryDaily {
+  domainId    String   @map("domain_id") @db.Uuid
+  date        DateTime @db.Date
+  query       String
+  country     String
+  clicks      Int
+  impressions Int
+  position    Float    @db.Real
+
+  domain Domain @relation(fields: [domainId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@id([domainId, date, query, country])
+  @@index([domainId, country, date], map: "gsc_query_country_daily_country_idx")
+  @@index([domainId, query, date], map: "gsc_query_country_daily_query_idx")
+  @@map("gsc_query_country_daily")
+}
+
+/// Anahtar kelime × ülke: son 28 gün ve önceki 28 gün (ücretsiz lokasyon bazlı sıralama kaynağı)
+model GscQueryCountry {
+  domainId        String @map("domain_id") @db.Uuid
+  query           String
+  country         String
+  clicks          Int
+  impressions     Int
+  position        Float  @db.Real
+  prevClicks      Int?   @map("prev_clicks")
+  prevImpressions Int?   @map("prev_impressions")
+  prevPosition    Float? @map("prev_position") @db.Real
+
+  domain Domain @relation(fields: [domainId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@id([domainId, query, country])
+  @@index([domainId, country, position], map: "gsc_query_country_country_idx")
+  @@map("gsc_query_country")
+}
+
+// ---------------------------------------------------------------- Site sağlığı
+model Audit {
+  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  domainId     String    @map("domain_id") @db.Uuid
+  status       String    @default("queued")
+  score        Int?
+  pagesCrawled Int       @default(0) @map("pages_crawled")
+  siteInfo     Json      @default("{}") @map("site_info") @db.JsonB
+  error        String?
+  startedAt    DateTime? @map("started_at") @db.Timestamptz(6)
+  finishedAt   DateTime? @map("finished_at") @db.Timestamptz(6)
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  domain   Domain         @relation(fields: [domainId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  pages    AuditPage[]
+  issues   AuditIssue[]   @ignore
+  keywords AuditKeyword[]
+
+  @@index([domainId, createdAt(sort: Desc)], map: "audits_domain_idx")
+  @@map("audits")
+}
+
+model AuditPage {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  auditId         String   @map("audit_id") @db.Uuid
+  url             String
+  statusCode      Int?     @map("status_code")
+  loadMs          Int?     @map("load_ms")
+  bytes           Int?
+  title           String?
+  metaDescription String?  @map("meta_description")
+  h1              String?
+  wordCount       Int?     @map("word_count")
+  depth           Int      @default(0)
+  issueCount      Int      @default(0) @map("issue_count")
+  // Search Console gerektirmeyen site içi analiz alanları
+  canonical       String?
+  noindex         Boolean  @default(false)
+  lang            String?
+  h2Count         Int?     @map("h2_count")
+  internalLinks   Int?     @map("internal_links")
+  externalLinks   Int?     @map("external_links")
+  inlinks         Int      @default(0)
+  images          Int?
+  imagesNoAlt     Int?     @map("images_no_alt")
+  schemaTypes     String[] @default([]) @map("schema_types")
+  inSitemap       Boolean  @default(false) @map("in_sitemap")
+  onpageScore     Int?     @map("onpage_score")
+  primaryKeyword  String?  @map("primary_keyword")
+
+  audit Audit @relation(fields: [auditId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([auditId, url])
+  @@map("audit_pages")
+}
+
+/// Birincil anahtarı olmayan, toplu eklenen satırlar. Migrate tabloyu yönetir;
+/// @@ignore sadece Prisma Client'tan gizler (sorgular pg ile yapılıyor).
+model AuditIssue {
+  auditId String  @map("audit_id") @db.Uuid
+  code    String
+  url     String
+  detail  String?
+
+  audit Audit @relation(fields: [auditId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([auditId, code], map: "audit_issues_audit_code_idx")
+  @@map("audit_issues")
+  @@ignore
+}
+
+/// Taranan her sayfanın içeriğinden çıkarılan, hedeflenen anahtar kelimeler (sayfa başına en fazla 20)
+model AuditKeyword {
+  auditId    String  @map("audit_id") @db.Uuid
+  url        String
+  keyword    String
+  score      Float   @db.Real
+  count      Int
+  density    Float   @db.Real
+  inTitle    Boolean @map("in_title")
+  inH1       Boolean @map("in_h1")
+  inMeta     Boolean @map("in_meta")
+  inUrl      Boolean @map("in_url")
+  inHeadings Boolean @map("in_headings")
+
+  audit Audit @relation(fields: [auditId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@id([auditId, url, keyword])
+  @@index([auditId, keyword], map: "audit_keywords_keyword_idx")
+  @@map("audit_keywords")
+}
+
+// ---------------------------------------------------------------- Lokasyon bazlı sıralamalar (DataForSEO)
+/// Bir ülke + dil için sitenin Google'da sıralandığı kelimelerin anlık görüntüsü
+model RankSnapshot {
+  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  domainId     String    @map("domain_id") @db.Uuid
+  locationCode Int       @map("location_code")
+  locationName String    @map("location_name")
+  countryIso   String?   @map("country_iso")
+  languageCode String    @map("language_code")
+  status       String    @default("running")
+  totalCount   Int?      @map("total_count")
+  etv          Float?    @db.Real
+  metrics      Json?     @db.JsonB
+  error        String?
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  finishedAt   DateTime? @map("finished_at") @db.Timestamptz(6)
+
+  domain   Domain        @relation(fields: [domainId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  keywords RankKeyword[]
+
+  @@index([domainId, locationCode, languageCode, createdAt(sort: Desc)], map: "rank_snapshots_domain_idx")
+  @@map("rank_snapshots")
+}
+
+model RankKeyword {
+  snapshotId       String  @map("snapshot_id") @db.Uuid
+  keyword          String
+  position         Int
+  positionAbsolute Int?    @map("position_absolute")
+  previousPosition Int?    @map("previous_position")
+  isNew            Boolean @default(false) @map("is_new")
+  url              String?
+  searchVolume     Int?    @map("search_volume")
+  cpc              Float?  @db.Real
+  competition      Float?  @db.Real
+  difficulty       Int?
+  intent           String?
+  etv              Float?  @db.Real
+
+  snapshot RankSnapshot @relation(fields: [snapshotId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@id([snapshotId, keyword])
+  @@index([snapshotId, position], map: "rank_keywords_position_idx")
+  @@map("rank_keywords")
+}
+
+/// Tek bir kelime için canlı Google sonucundan ölçülen pozisyon
+model RankCheck {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  domainId     String   @map("domain_id") @db.Uuid
+  keyword      String
+  locationCode Int      @map("location_code")
+  locationName String   @map("location_name")
+  countryIso   String?  @map("country_iso")
+  languageCode String   @map("language_code")
+  position     Int?
+  url          String?
+  error        String?
+  checkedAt    DateTime @default(now()) @map("checked_at") @db.Timestamptz(6)
+
+  domain Domain @relation(fields: [domainId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([domainId, keyword, checkedAt(sort: Desc)], map: "rank_checks_domain_idx")
+  @@map("rank_checks")
+}
+
+// ---------------------------------------------------------------- PageSpeed
+model PagespeedReport {
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  domainId      String   @map("domain_id") @db.Uuid
+  url           String
+  strategy      String
+  status        String   @default("running")
+  performance   Int?
+  accessibility Int?
+  bestPractices Int?     @map("best_practices")
+  seo           Int?
+  metrics       Json     @default("{}") @db.JsonB
+  fieldData     Json?    @map("field_data") @db.JsonB
+  opportunities Json     @default("[]") @db.JsonB
+  diagnostics   Json     @default("[]") @db.JsonB
+  error         String?
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  domain Domain @relation(fields: [domainId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([domainId, strategy, createdAt(sort: Desc)], map: "pagespeed_domain_idx")
+  @@map("pagespeed_reports")
+}
