@@ -1,4 +1,4 @@
-import { Globe, KeyRound, LineChart, LogOut, Menu, Moon, ScanSearch, Settings, Sun } from 'lucide-react';
+import { Globe, KeyRound, LineChart, LogOut, Menu, Moon, ScanSearch, Settings, Sun, Users } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { NavLink, Outlet, useLocation } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
@@ -55,6 +55,11 @@ export default function AppLayout() {
           ))}
         </nav>
         <div className="nav-section">Hesap</div>
+        {user?.role === 'admin' && (
+          <NavLink to="/users" className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}>
+            <Users size={18} /> Kullanıcılar
+          </NavLink>
+        )}
         <NavLink to="/settings" className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}>
           <Settings size={18} /> Ayarlar & Entegrasyonlar
         </NavLink>

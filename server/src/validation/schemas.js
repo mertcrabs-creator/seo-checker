@@ -22,8 +22,17 @@ export const registerSchema = z.object({
   password,
 });
 
+/** Kullanıcı adı veya e-posta (admin'in açtığı hesaplar kullanıcı adıyla girebilir) */
+export const username = z
+  .string({ required_error: 'Kullanıcı adı zorunlu' })
+  .trim()
+  .toLowerCase()
+  .min(3, 'Kullanıcı adı en az 3 karakter olmalı')
+  .max(254)
+  .refine((v) => /^[a-z0-9._-]{3,40}$/.test(v) || /^[^\s@]+@[^\s@]+\.[a-z]{2,}$/.test(v), 'Kullanıcı adı yalnızca harf, rakam, nokta, tire ve alt çizgi içerebilir (veya e-posta girin)');
+
 export const loginSchema = z.object({
-  email,
+  email: z.string({ required_error: 'Kullanıcı adı zorunlu' }).trim().toLowerCase().min(1, 'Kullanıcı adı zorunlu').max(254),
   password: z.string().min(1, 'Şifre zorunlu').max(128),
 });
 
@@ -353,3 +362,19 @@ export const rankDropAnalysisSchema = z.object({
   urls: z.array(z.string().trim().url().max(2000)).max(6).default([]),
 });
 export const rankDropIdParam = z.object({ analysisId: z.string().uuid() });
+
+// ------------------------------------------------------------------ Ekip yönetimi (admin)
+const domainIdList = z.array(z.string().uuid()).max(500);
+export const adminUserCreateSchema = z.object({
+  name: z.string().trim().min(2, 'Ad en az 2 karakter olmalı').max(100),
+  username,
+  password,
+  domainIds: domainIdList.default([]),
+});
+export const adminUserUpdateSchema = z.object({
+  name: z.string().trim().min(2).max(100).optional(),
+  username: username.optional(),
+  password: password.optional(),
+  domainIds: domainIdList.optional(),
+});
+export const adminUserIdParam = z.object({ userId: z.string().uuid() });

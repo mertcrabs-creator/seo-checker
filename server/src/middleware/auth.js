@@ -1,6 +1,7 @@
 import jwt from 'jsonwebtoken';
 import { config } from '../config.js';
 import { query } from '../db/pool.js';
+import { withOwner } from '../services/accessService.js';
 import { forbidden, unauthorized } from '../utils/httpError.js';
 
 export function signAccessToken(user) {
@@ -35,13 +36,13 @@ export async function requireAuth(req, _res, next) {
   }
 
   const { rows } = await query(
-    'SELECT id, email, name, role, password_changed_at FROM users WHERE id = $1',
+    'SELECT id, email, name, role, created_by, password_changed_at FROM users WHERE id = $1',
     [payload.sub],
   );
   const user = rows[0];
   if (!user || new Date(user.password_changed_at).getTime() !== payload.pwv) return next(unauthorized());
 
-  req.user = { id: user.id, email: user.email, name: user.name, role: user.role };
+  req.user = withOwner(user);
   next();
 }
 

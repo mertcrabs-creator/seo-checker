@@ -22,20 +22,24 @@ import {
   indexPagesQuery, pagespeedSchema, siteKeywordPagesQuery, siteKeywordQuery, sitePageDetailQuery, sitePageQuery, updateDomainSchema,
 } from '../validation/schemas.js';
 import { z } from 'zod';
+import { accessParams, domainAccess } from '../services/accessService.js';
 
 const router = Router();
 const MAX_DOMAINS_PER_USER = 200;
 const computing = new Set(); // aynı alan adında eşzamanlı otorite hesaplaması olmasın
 const GSC_TABLES = ['gsc_daily', 'gsc_query_daily', 'gsc_page_daily', 'gsc_country_daily', 'gsc_device_daily', 'gsc_query_page', 'gsc_query_country', 'gsc_query_country_daily', 'gsc_page_monthly'];
 
-/** Sahiplik kontrolü: başka kullanıcının alan adına erişim 404 döner (varlık sızdırılmaz). */
+/**
+ * Erişim kontrolü: hesap sahibi tüm alan adlarını, ekip üyesi yalnızca atananları görür; diğerleri 404 (varlık sızdırılmaz).
+ * user_id (sahip) Google API çağrılarında kullanılır: Search Console bağlantısı sahibindir.
+ */
 async function loadDomain(req, _res, next) {
   const { rows } = await query(
-    `SELECT id, hostname, gsc_property, sync_status, sync_error, last_synced_at, created_at,
-            rank_languages, rank_locations, rank_status, rank_error, rank_updated_at,
-            backlink_status, backlink_error, backlink_updated_at, index_status, index_error, index_updated_at, ssl_expires_at, business_type
-       FROM domains WHERE id = $1 AND user_id = $2`,
-    [req.valid.params.id, req.user.id],
+    `SELECT d.id, d.user_id, d.hostname, d.gsc_property, d.sync_status, d.sync_error, d.last_synced_at, d.created_at,
+            d.rank_languages, d.rank_locations, d.rank_status, d.rank_error, d.rank_updated_at,
+            d.backlink_status, d.backlink_error, d.backlink_updated_at, d.index_status, d.index_error, d.index_updated_at, d.ssl_expires_at, d.business_type
+       FROM domains d WHERE d.id = $1 AND ${domainAccess('d', 2)}`,
+    [req.valid.params.id, ...accessParams(req.user)],
   );
   if (!rows[0]) return next(notFound('Alan adı bulunamadı'));
   req.domain = rows[0];
@@ -75,23 +79,28 @@ const withSite = [...withDomain, loadSiteAudit];
 
 // ------------------------------------------------------------------ CRUD
 router.get('/', async (req, res) => {
-  res.json({ domains: await analytics.domainSummaries(req.user.id) });
+  res.json({ domains: await analytics.domainSummaries(req.user) });
 });
 
 router.post('/', validate({ body: createDomainSchema }), async (req, res) => {
   const { hostname, gscProperty } = req.valid.body;
-  const { rows: countRows } = await query('SELECT count(*)::int AS n FROM domains WHERE user_id = $1', [req.user.id]);
+  const owner = req.user.ownerId;
+  const { rows: countRows } = await query('SELECT count(*)::int AS n FROM domains WHERE user_id = $1', [owner]);
   if (countRows[0].n >= MAX_DOMAINS_PER_USER) throw badRequest('Alan adı limitine ulaştınız');
-  const { rows } = await query(
-    `INSERT INTO domains (user_id, hostname, gsc_property) VALUES ($1, $2, $3)
-     ON CONFLICT (user_id, hostname) DO NOTHING RETURNING id, hostname, gsc_property, sync_status, created_at`,
-    [req.user.id, hostname, gscProperty || null],
-  );
-  if (!rows[0]) throw conflict('Bu alan adı zaten ekli');
-  const domain = rows[0];
+  // Ekip üyesinin eklediği alan adı da hesap sahibine aittir (Google bağlantısı onun); üyeye otomatik atanır
+  const domain = await withTransaction(async (client) => {
+    const { rows } = await client.query(
+      `INSERT INTO domains (user_id, hostname, gsc_property) VALUES ($1, $2, $3)
+       ON CONFLICT (user_id, hostname) DO NOTHING RETURNING id, hostname, gsc_property, sync_status, created_at`,
+      [owner, hostname, gscProperty || null],
+    );
+    if (!rows[0]) throw conflict('Bu alan adı zaten ekli');
+    if (!req.user.fullAccess) await client.query('INSERT INTO domain_members (domain_id, user_id) VALUES ($1, $2)', [rows[0].id, req.user.id]);
+    return rows[0];
+  });
   if (domain.gsc_property) {
     await query("UPDATE domains SET sync_status = 'running' WHERE id = $1", [domain.id]);
-    syncQueue.add(domain.id, () => runSync(domain.id, req.user.id));
+    syncQueue.add(domain.id, () => runSync(domain.id, owner));
   }
   // Search Console bağlı olsun olmasın site analizi ve mobil hız testi hemen başlar
   await startAudit(domain);
@@ -106,8 +115,8 @@ router.patch('/:id', withDomain, validate({ body: updateDomainSchema }), async (
   if (gscProperty !== req.domain.gsc_property && syncQueue.has(req.domain.id)) throw conflict('Senkronizasyon sürerken mülk değiştirilemez');
   const domain = await withTransaction(async (client) => {
     const { rows } = await client.query(
-      'UPDATE domains SET gsc_property = $3 WHERE id = $1 AND user_id = $2 RETURNING id, hostname, gsc_property, sync_status',
-      [req.domain.id, req.user.id, gscProperty],
+      'UPDATE domains SET gsc_property = $2 WHERE id = $1 RETURNING id, hostname, gsc_property, sync_status',
+      [req.domain.id, gscProperty],
     );
     // Mülk değiştiyse eski mülkün verisi yeni mülkle karışmasın
     if (gscProperty !== req.domain.gsc_property) {
@@ -120,7 +129,7 @@ router.patch('/:id', withDomain, validate({ body: updateDomainSchema }), async (
 });
 
 router.delete('/:id', withDomain, async (req, res) => {
-  await query('DELETE FROM domains WHERE id = $1 AND user_id = $2', [req.domain.id, req.user.id]);
+  await query('DELETE FROM domains WHERE id = $1', [req.domain.id]);
   res.status(204).end();
 });
 
@@ -129,7 +138,7 @@ router.post('/:id/sync', heavyJobLimiter, withDomain, async (req, res) => {
   if (!req.domain.gsc_property) throw badRequest('Önce bir Search Console mülkü seçin');
   if (syncQueue.has(req.domain.id)) throw conflict('Senkronizasyon zaten çalışıyor');
   await query("UPDATE domains SET sync_status = 'running', sync_error = NULL WHERE id = $1", [req.domain.id]);
-  syncQueue.add(req.domain.id, () => runSync(req.domain.id, req.user.id));
+  syncQueue.add(req.domain.id, () => runSync(req.domain.id, req.domain.user_id));
   res.status(202).json({ status: 'running' });
 });
 
@@ -153,7 +162,7 @@ router.get('/:id/keywords/trend', withDomain, validate({ query: keywordTrendQuer
 
 /** Tek kelime için en doğru ülke bazlı sıra: canlı Search Console kırılımı (28g/7g/cihaz/güven). */
 router.get('/:id/keywords/insight', withDomain, validate({ query: keywordInsightQuery }), async (req, res) => {
-  res.json({ countries: await insight.liveInsight(req.domain, req.user.id, req.valid.query.query) });
+  res.json({ countries: await insight.liveInsight(req.domain, req.domain.user_id, req.valid.query.query) });
 });
 
 /** Canlı Google sonucu ile doğrulama (SerpApi; arama hakkı harcar). */
@@ -298,7 +307,7 @@ const requireGsc = (req, _res, next) => next(req.domain.gsc_property ? undefined
 router.post('/:id/index/inspect', heavyJobLimiter, withDomain, requireGsc, async (req, res) => {
   if (indexQueue.has(req.domain.id) || req.domain.index_status === 'running') throw conflict('İndeks denetimi zaten sürüyor');
   await query("UPDATE domains SET index_status = 'running', index_error = NULL WHERE id = $1", [req.domain.id]);
-  indexQueue.add(req.domain.id, () => indexing.runInspection(req.domain, req.user.id));
+  indexQueue.add(req.domain.id, () => indexing.runInspection(req.domain, req.domain.user_id));
   res.status(202).json({ status: 'running' });
 });
 

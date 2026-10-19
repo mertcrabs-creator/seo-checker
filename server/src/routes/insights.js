@@ -51,7 +51,7 @@ router.get('/decay', requireGsc, async (req, res) => {
 });
 
 router.get('/decay/queries', heavyJobLimiter, requireGsc, validate({ query: decayPageQuery }), async (req, res) => {
-  res.json(await decayPageQueries(req.domain, req.user.id, req.valid.query));
+  res.json(await decayPageQueries(req.domain, req.domain.user_id, req.valid.query));
 });
 
 router.get('/ctr', requireGsc, async (req, res) => {
@@ -99,7 +99,7 @@ router.get('/rank-drops/analyses', async (req, res) => {
 });
 
 router.post('/rank-drops/analyses', heavyJobLimiter, requireGsc, validate({ body: rankDropAnalysisSchema }), async (req, res) => {
-  res.status(202).json({ analysis: await rankDrops.createAnalysis(req.domain, req.user.id, req.valid.body) });
+  res.status(202).json({ analysis: await rankDrops.createAnalysis(req.domain, req.domain.user_id, req.valid.body) });
 });
 
 router.get('/rank-drops/analyses/:analysisId', validate({ params: rankDropIdParam }), async (req, res) => {
@@ -193,7 +193,7 @@ router.get('/briefs', async (req, res) => {
 });
 
 router.post('/briefs', heavyJobLimiter, validate({ body: briefSchema }), async (req, res) => {
-  res.status(202).json({ brief: await briefs.createBrief(req.domain, req.user.id, req.valid.body) });
+  res.status(202).json({ brief: await briefs.createBrief(req.domain, req.domain.user_id, req.valid.body) });
 });
 
 router.get('/briefs/:briefId', validate({ params: briefIdParam }), async (req, res) => {

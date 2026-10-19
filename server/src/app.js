@@ -6,6 +6,7 @@ import { config } from './config.js';
 import { requireAuth } from './middleware/auth.js';
 import { errorHandler, notFoundHandler } from './middleware/errorHandler.js';
 import { apiLimiter } from './middleware/security.js';
+import adminRoutes from './routes/admin.js';
 import alertRoutes from './routes/alerts.js';
 import analyzeRoutes from './routes/analyze.js';
 import authRoutes from './routes/auth.js';
@@ -58,6 +59,7 @@ export function createApp() {
   app.use('/api/keywords', requireAuth, keywordRoutes);
   app.use('/api/analyze', requireAuth, analyzeRoutes);
   app.use('/api/alerts', requireAuth, alertRoutes);
+  app.use('/api/admin', requireAuth, adminRoutes);
 
   app.use(notFoundHandler);
   app.use(errorHandler);

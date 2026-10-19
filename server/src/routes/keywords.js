@@ -3,23 +3,24 @@ import { z } from 'zod';
 import { query } from '../db/pool.js';
 import { validate } from '../middleware/validate.js';
 import * as analytics from '../services/analyticsService.js';
+import { accessParams, domainAccess } from '../services/accessService.js';
 import { notFound } from '../utils/httpError.js';
 import { countryCode, days, globalKeywordQuery } from '../validation/schemas.js';
 
 const router = Router();
 
-/** Kullanıcının alan adları (opsiyonel tek alan adı filtresiyle) — sahiplik burada garanti edilir. */
-async function userDomainIds(userId, domainId) {
+/** Kullanıcının erişebildiği alan adları (opsiyonel tek alan adı filtresiyle) — erişim burada garanti edilir. */
+async function userDomainIds(user, domainId) {
   const { rows } = await query(
-    'SELECT id, hostname FROM domains WHERE user_id = $1 AND ($2::uuid IS NULL OR id = $2) AND gsc_property IS NOT NULL',
-    [userId, domainId || null],
+    `SELECT d.id, d.hostname FROM domains d WHERE ${domainAccess('d', 2)} AND ($1::uuid IS NULL OR d.id = $1) AND d.gsc_property IS NOT NULL`,
+    [domainId || null, ...accessParams(user)],
   );
   if (domainId && !rows.length) throw notFound('Alan adı bulunamadı');
   return rows;
 }
 
 router.get('/', validate({ query: globalKeywordQuery }), async (req, res) => {
-  const domains = await userDomainIds(req.user.id, req.valid.query.domainId);
+  const domains = await userDomainIds(req.user, req.valid.query.domainId);
   const ids = domains.map((d) => d.id);
   const range = ids.length ? await analytics.getRange(ids, req.valid.query.days) : null;
   if (!range) return res.json({ total: 0, rows: [], range: null });
@@ -33,7 +34,7 @@ router.get(
   '/overview',
   validate({ query: z.object({ days, domainId: z.string().uuid().optional(), country: countryCode.optional() }) }),
   async (req, res) => {
-    const domains = await userDomainIds(req.user.id, req.valid.query.domainId);
+    const domains = await userDomainIds(req.user, req.valid.query.domainId);
     const ids = domains.map((d) => d.id);
     const range = ids.length ? await analytics.getRange(ids, req.valid.query.days) : null;
     if (!range) return res.json({ range: null, positions: null, opportunities: null, countries: [] });

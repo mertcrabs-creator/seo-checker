@@ -1,5 +1,6 @@
 import { query } from '../db/pool.js';
 import { POSITION_BUCKETS } from '../validation/schemas.js';
+import { accessParams, domainAccess } from './accessService.js';
 
 const addDays = (iso, n) => new Date(Date.parse(`${iso}T00:00:00Z`) + n * 86_400_000).toISOString().slice(0, 10);
 
@@ -286,11 +287,11 @@ export async function opportunities(domainIds, range) {
   };
 }
 
-export async function domainSummaries(userId) {
+export async function domainSummaries(user) {
   const { rows } = await query(
     `WITH d AS (
-       SELECT id, hostname, gsc_property, sync_status, sync_error, last_synced_at, created_at
-         FROM domains WHERE user_id = $1
+       SELECT x.id, x.hostname, x.gsc_property, x.sync_status, x.sync_error, x.last_synced_at, x.created_at
+         FROM domains x WHERE ${domainAccess('x', 1)}
      ), bounds AS (
        SELECT g.domain_id, max(g.date) AS end_d FROM gsc_daily g JOIN d ON d.id = g.domain_id GROUP BY g.domain_id
      ), cur AS (
@@ -332,7 +333,7 @@ export async function domainSummaries(userId) {
        LEFT JOIN site ON site.domain_id = d.id
        LEFT JOIN psi ON psi.domain_id = d.id
       ORDER BY cur.clicks DESC NULLS LAST, d.created_at DESC`,
-    [userId],
+    accessParams(user),
   );
   return rows;
 }

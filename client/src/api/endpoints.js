@@ -107,6 +107,13 @@ export const authorityApi = {
 };
 
 /** Analiz derinleştirme: değişiklik takibi, içerik erimesi, CTR anomalisi, kümeler, iç linkler, yapısal veri, rakipler, loglar */
+export const adminApi = {
+  users: () => data(http.get('/admin/users')),
+  createUser: (body) => data(http.post('/admin/users', body)),
+  updateUser: (userId, body) => data(http.patch(`/admin/users/${id(userId)}`, body)),
+  removeUser: (userId) => data(http.delete(`/admin/users/${id(userId)}`)),
+};
+
 export const insightApi = {
   changes: (domainId, params) => data(http.get(`/domains/${id(domainId)}/insights/changes`, { params })),
   watch: (domainId) => data(http.get(`/domains/${id(domainId)}/insights/changes/watch`)),

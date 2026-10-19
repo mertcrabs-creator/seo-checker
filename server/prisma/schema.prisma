@@ -25,7 +25,12 @@ model User {
   lastLoginAt         DateTime? @map("last_login_at") @db.Timestamptz(6)
   createdAt           DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt           DateTime  @default(now()) @map("updated_at") @db.Timestamptz(6)
+  /// Kullanıcıyı açan admin (ekip üyesi). Boş = kendi hesabının sahibi
+  createdBy           String?   @map("created_by") @db.Uuid
 
+  creator          User?          @relation("UserCreator", fields: [createdBy], references: [id], onDelete: SetNull, onUpdate: NoAction)
+  createdUsers     User[]         @relation("UserCreator")
+  memberships      DomainMember[]
   refreshTokens    RefreshToken[]
   googleConnection GoogleConnection?
   alerts           Alert[]
@@ -136,6 +141,7 @@ model Domain {
   sitemapUrls          DomainSitemapUrl[]
   contentBriefs        ContentBrief[]
   rankDropAnalyses     RankDropAnalysis[]
+  members              DomainMember[]
 
   @@unique([userId, hostname])
   @@map("domains")
@@ -877,4 +883,18 @@ model RankDropAnalysis {
 
   @@index([domainId, createdAt(sort: Desc)], map: "rank_drop_analyses_domain_idx")
   @@map("rank_drop_analyses")
+}
+
+/// Ekip üyesi ↔ alan adı ataması: admin dışındaki kullanıcılar yalnızca atandıkları alan adlarını görür
+model DomainMember {
+  domainId  String   @map("domain_id") @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  domain Domain @relation(fields: [domainId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@id([domainId, userId])
+  @@index([userId], map: "domain_members_user_idx")
+  @@map("domain_members")
 }

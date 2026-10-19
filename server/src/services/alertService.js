@@ -2,6 +2,7 @@ import dns from 'node:dns/promises';
 import tls from 'node:tls';
 import { config } from '../config.js';
 import { query } from '../db/pool.js';
+import { accessParams, domainAccess } from './accessService.js';
 import { ISSUES } from './audit/issueCatalog.js';
 import { autoAnalyze } from './insights/rankDropService.js';
 import { isBlockedIp } from '../utils/safeFetch.js';
@@ -179,22 +180,26 @@ export const checkSsl = safe(async (domain) => {
 });
 
 // ------------------------------------------------------------------ Okuma
-export async function listAlerts(userId, { unread, page, pageSize }) {
+// Kullanıcının görebildiği uyarılar: erişebildiği alan adlarınınkiler + alan adına bağlı olmayan kendi uyarıları
+const visible = (i) => `((a.domain_id IS NULL AND a.user_id = $${i + 2})
+  OR EXISTS (SELECT 1 FROM domains d2 WHERE d2.id = a.domain_id AND ${domainAccess('d2', i)}))`;
+
+export async function listAlerts(user, { unread, page, pageSize }) {
   const { rows } = await query(
     `SELECT a.id, a.domain_id, d.hostname, a.type, a.severity, a.title, a.detail, a.created_at, a.read_at,
             COUNT(*) OVER ()::int AS total
        FROM alerts a LEFT JOIN domains d ON d.id = a.domain_id
-      WHERE a.user_id = $1 AND ($2::boolean = false OR a.read_at IS NULL)
-      ORDER BY a.created_at DESC LIMIT $3 OFFSET $4`,
-    [userId, Boolean(unread), pageSize, (page - 1) * pageSize],
+      WHERE ${visible(4)} AND ($1::boolean = false OR a.read_at IS NULL)
+      ORDER BY a.created_at DESC LIMIT $2 OFFSET $3`,
+    [Boolean(unread), pageSize, (page - 1) * pageSize, ...accessParams(user)],
   );
-  const { rows: [c] } = await query('SELECT count(*)::int AS n FROM alerts WHERE user_id = $1 AND read_at IS NULL', [userId]);
+  const { rows: [c] } = await query(`SELECT count(*)::int AS n FROM alerts a WHERE ${visible(1)} AND a.read_at IS NULL`, accessParams(user));
   return { unread: c.n, total: rows[0]?.total || 0, rows: rows.map(({ total, ...r }) => r) };
 }
 
-export async function markRead(userId, id) {
+export async function markRead(user, id) {
   await query(
-    'UPDATE alerts SET read_at = now() WHERE user_id = $1 AND read_at IS NULL AND ($2::uuid IS NULL OR id = $2)',
-    [userId, id || null],
+    `UPDATE alerts a SET read_at = now() WHERE ${visible(2)} AND a.read_at IS NULL AND ($1::uuid IS NULL OR a.id = $1)`,
+    [id || null, ...accessParams(user)],
   );
 }

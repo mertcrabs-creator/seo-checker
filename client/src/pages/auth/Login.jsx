@@ -43,12 +43,12 @@ export default function Login() {
       {error && <Alert type="error">{error}</Alert>}
       <form onSubmit={submit} noValidate>
         <div className="field">
-          <label htmlFor="email">E-posta</label>
+          <label htmlFor="email">Kullanıcı adı veya e-posta</label>
           <div className="input-icon">
             <Mail size={16} />
             <input
-              id="email" className="input" type="email" autoComplete="username" required maxLength={254}
-              value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} placeholder="ornek@sirket.com" autoFocus
+              id="email" className="input" type="text" autoComplete="username" autoCapitalize="none" spellCheck={false} required maxLength={254}
+              value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} placeholder="kullanici.adi veya ornek@sirket.com" autoFocus
             />
           </div>
         </div>

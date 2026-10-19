@@ -62,16 +62,16 @@ function GoogleCard() {
         ) : s.connected ? (
           <>
             <p className="text-2">Hesap: <strong>{s.email || 'Google hesabı'}</strong> · {fmt.dateTime(s.connectedAt)} tarihinde bağlandı</p>
-            <div className="row">
+            {s.manageable === false ? <p className="hint">Bu bağlantı hesap sahibine aittir; Search Console verileri bu hesap üzerinden alınır.</p> : <div className="row">
               <button className="btn btn-secondary" onClick={() => connect.mutate()} disabled={connect.isPending}><Link2 size={16} /> Yeniden bağlan</button>
               <button className="btn btn-ghost" onClick={() => disconnect.mutate()} disabled={disconnect.isPending}><Unlink size={16} /> Bağlantıyı kaldır</button>
-            </div>
+            </div>}
           </>
         ) : (
           <div>
-            <button className="btn btn-primary" onClick={() => connect.mutate()} disabled={connect.isPending}>
+            {s.manageable === false ? <p className="hint">Google bağlantısını hesap sahibi kurmalıdır.</p> : <button className="btn btn-primary" onClick={() => connect.mutate()} disabled={connect.isPending}>
               {connect.isPending ? <Spinner size={16} /> : <Link2 size={16} />} Google ile bağlan
-            </button>
+            </button>}
           </div>
         )}
       </div>

@@ -11,6 +11,7 @@ const Domains = lazy(() => import('./pages/domains/Domains'));
 const DomainDetail = lazy(() => import('./pages/domains/DomainDetail'));
 const Keywords = lazy(() => import('./pages/keywords/Keywords'));
 const Settings = lazy(() => import('./pages/settings/Settings'));
+const Users = lazy(() => import('./pages/users/Users'));
 const PageAnalyzer = lazy(() => import('./pages/analyze/PageAnalyzer'));
 const DomainReport = lazy(() => import('./pages/report/DomainReport'));
 
@@ -48,6 +49,7 @@ export default function App() {
           <Route path="/keywords" element={<Keywords />} />
           <Route path="/analyze" element={<PageAnalyzer />} />
           <Route path="/settings" element={<Settings />} />
+          <Route path="/users" element={<Users />} />
         </Route>
         <Route path="*" element={<Navigate to="/domains" replace />} />
       </Routes>

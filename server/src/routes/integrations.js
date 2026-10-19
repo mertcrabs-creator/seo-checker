@@ -4,6 +4,7 @@ import { config } from '../config.js';
 import { requireAuth } from '../middleware/auth.js';
 import * as google from '../services/googleService.js';
 import * as serpapi from '../services/rankings/serpapi.js';
+import { forbidden } from '../utils/httpError.js';
 
 const router = Router();
 
@@ -36,11 +37,14 @@ router.get('/google/callback', async (req, res) => {
 
 router.use(requireAuth);
 
-router.get('/google', async (req, res) => res.json(await google.getStatus(req.user.id)));
+// Google bağlantısı hesap sahibinindir: ekip üyeleri onu kullanır (durum + mülk listesi) ama bağlayıp kesemez
+const ownerOnly = (req, _res, next) => next(req.user.fullAccess ? undefined : forbidden('Google bağlantısını yalnızca hesap sahibi yönetebilir'));
 
-router.post('/google/auth-url', async (req, res) => res.json({ url: await google.createAuthUrl(req.user.id) }));
+router.get('/google', async (req, res) => res.json({ ...(await google.getStatus(req.user.ownerId)), manageable: req.user.fullAccess }));
 
-router.get('/google/sites', async (req, res) => res.json({ sites: await google.listSites(req.user.id) }));
+router.post('/google/auth-url', ownerOnly, async (req, res) => res.json({ url: await google.createAuthUrl(req.user.id) }));
+
+router.get('/google/sites', async (req, res) => res.json({ sites: await google.listSites(req.user.ownerId) }));
 
 /** Canlı doğrulama sağlayıcısı durumu ve kalan arama hakkı (hak harcamaz). */
 router.get('/serpapi', async (_req, res) => {
@@ -52,7 +56,7 @@ router.get('/serpapi', async (_req, res) => {
   }
 });
 
-router.delete('/google', async (req, res) => {
+router.delete('/google', ownerOnly, async (req, res) => {
   await google.disconnect(req.user.id);
   res.status(204).end();
 });
