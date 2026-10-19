@@ -4,6 +4,7 @@ import { bulkInsert } from '../../db/bulk.js';
 import { query, withTransaction } from '../../db/pool.js';
 import { safeFetch } from '../../utils/safeFetch.js';
 import { afterAudit } from '../alertService.js';
+import { detectAuditChanges } from '../changeService.js';
 import { computeScore, pageScore } from './issueCatalog.js';
 import { analyzePage, isCrawlable, normalizeUrl } from './pageAnalyzer.js';
 import { isAllowed, parseRobots } from './robots.js';
@@ -14,8 +15,9 @@ const MAX_SITEMAP_URLS = 10_000;
 const tryFetch = (url, opts) => safeFetch(url, opts).catch((error) => ({ error }));
 const isHtml = (res) => /text\/html|application\/xhtml/i.test(String(res.headers?.['content-type'] || ''));
 
+/** Site haritasındaki URL'ler -> lastmod (YYYY-MM-DD veya null). */
 async function loadSitemaps(urls, siteInfo) {
-  const found = new Set();
+  const found = new Map();
   const queue = [...urls];
   const visited = new Set();
   while (queue.length && visited.size < 15 && found.size < MAX_SITEMAP_URLS) {
@@ -28,11 +30,13 @@ async function loadSitemaps(urls, siteInfo) {
     siteInfo.sitemap.files.push(url);
     const $ = cheerio.load(res.body, { xml: true });
     $('sitemap > loc').each((_, el) => queue.push($(el).text().trim()));
-    $('url > loc').each((_, el) => {
-      if (found.size < MAX_SITEMAP_URLS) {
-        const u = normalizeUrl($(el).text().trim());
-        if (u) found.add(u);
-      }
+    $('url').each((_, el) => {
+      if (found.size >= MAX_SITEMAP_URLS) return;
+      const u = normalizeUrl($(el).children('loc').first().text().trim());
+      const raw = /^(\d{4}-\d{2}-\d{2})/.exec($(el).children('lastmod').first().text().trim())?.[1];
+      // Geçersiz tarih (ör. 2026-02-30) veritabanı yazımını bozmasın
+      const lastmod = raw && !Number.isNaN(Date.parse(raw)) && new Date(raw).toISOString().slice(0, 10) === raw ? raw : null;
+      if (u) found.set(u, lastmod);
     });
   }
   return found;
@@ -185,6 +189,7 @@ export async function crawlSite(hostname, maxPages) {
     const record = { url, depth, statusCode: null, loadMs: null, bytes: null };
     const issues = [];
     let links = [];
+    let anchors = null;
     let keywords = [];
     let data = {};
 
@@ -207,13 +212,14 @@ export async function crawlSite(hostname, maxPages) {
           const analysis = analyzePage(res, siteHost);
           issues.push(...analysis.issues);
           links = analysis.links;
+          anchors = analysis.anchors;
           keywords = analysis.keywords;
           data = analysis.data;
         }
       }
     }
     if (typeof depth === 'number' && depth >= 4) issues.push({ code: 'deep_page', detail: `${depth} tık` });
-    pages.set(url, { record: { ...record, ...data }, issues, links, keywords });
+    pages.set(url, { record: { ...record, ...data }, issues, links, anchors, keywords });
     for (const link of links) enqueue(link, typeof depth === 'number' ? depth + 1 : null);
   };
 
@@ -233,7 +239,7 @@ export async function crawlSite(hostname, maxPages) {
       // Bağlantılarla ulaşılamayan (yetim) sayfaları yakalamak için site haritası en sona eklenir
       if (!sitemapSeeded && !queue.length && pages.size < maxPages) {
         sitemapSeeded = true;
-        for (const u of sitemapUrls) enqueue(u, null);
+        for (const u of sitemapUrls.keys()) enqueue(u, null);
         if (queue.length) return pump();
       }
       resolve();
@@ -288,13 +294,41 @@ export async function crawlSite(hostname, maxPages) {
   const ttfbs = [...pages.values()].map((p) => p.record.loadMs).filter(Number.isFinite);
   siteInfo.avgLoadMs = ttfbs.length ? Math.round(ttfbs.reduce((a, b) => a + b, 0) / ttfbs.length) : null;
 
-  return { startUrl, pages: [...pages.values()], siteIssues, siteInfo };
+  // Sitenin hedeflediği diller (hreflang + sayfa dili): rakip karşılaştırması için
+  const langs = new Set();
+  for (const p of pages.values()) {
+    for (const h of p.record.hreflangs || []) if (h.lang !== 'x-default') langs.add(h.lang.split('-')[0]);
+    if (p.record.lang) langs.add(p.record.lang.toLowerCase().split('-')[0]);
+  }
+  siteInfo.languages = [...langs].slice(0, 60);
+
+  return { startUrl, pages: [...pages.values()], siteIssues, siteInfo, sitemapUrls };
+}
+
+/** Site haritası URL'lerini senkronlar: yeniler eklenir (first_seen), lastmod güncellenir, çıkarılanlar silinir. */
+export async function syncSitemapUrls(client, table, ownerCol, ownerId, sitemapUrls) {
+  const urls = [...sitemapUrls.keys()];
+  if (!urls.length) return { added: [], removed: [] };
+  const { rows: prev } = await client.query(`SELECT url FROM ${table} WHERE ${ownerCol} = $1`, [ownerId]);
+  const before = new Set(prev.map((r) => r.url));
+  const added = urls.filter((u) => !before.has(u));
+  const removed = [...before].filter((u) => !sitemapUrls.has(u));
+  for (let i = 0; i < urls.length; i += 5000) {
+    const slice = urls.slice(i, i + 5000);
+    await client.query(
+      `INSERT INTO ${table} (${ownerCol}, url, lastmod) SELECT $1::uuid, u.url, u.lastmod::date FROM unnest($2::text[], $3::text[]) AS u(url, lastmod)
+       ON CONFLICT (${ownerCol}, url) DO UPDATE SET lastmod = EXCLUDED.lastmod`,
+      [ownerId, slice, slice.map((u) => sitemapUrls.get(u))],
+    );
+  }
+  if (removed.length) await client.query(`DELETE FROM ${table} WHERE ${ownerCol} = $1 AND url = ANY($2::text[])`, [ownerId, removed]);
+  return { added: before.size ? added : [], removed };
 }
 
 export async function runAudit(auditId, domainId, hostname) {
   await query("UPDATE audits SET status = 'running', started_at = now() WHERE id = $1", [auditId]);
   try {
-    const { startUrl, pages, siteIssues, siteInfo } = await crawlSite(hostname, config.auditMaxPages);
+    const { startUrl, pages, siteIssues, siteInfo, sitemapUrls } = await crawlSite(hostname, config.auditMaxPages);
 
     const issueRows = [
       ...siteIssues.map((i) => [auditId, i.code, startUrl, i.detail || null]),
@@ -311,11 +345,11 @@ export async function runAudit(auditId, domainId, hostname) {
         [
           'audit_id', 'url', 'status_code', 'load_ms', 'bytes', 'title', 'meta_description', 'h1', 'word_count', 'depth', 'issue_count',
           'canonical', 'noindex', 'lang', 'h2_count', 'internal_links', 'external_links', 'inlinks', 'images', 'images_no_alt',
-          'schema_types', 'in_sitemap', 'onpage_score', 'primary_keyword',
+          'schema_types', 'in_sitemap', 'onpage_score', 'primary_keyword', 'schema_report', 'outline', 'published_at', 'modified_at',
         ],
         [
           'uuid', 'text', 'int', 'int', 'int', 'text', 'text', 'text', 'int', 'int', 'int',
-          'text', 'bool', 'text', 'int', 'int', 'int', 'int', 'int', 'int', 'text[]', 'bool', 'int', 'text',
+          'text', 'bool', 'text', 'int', 'int', 'int', 'int', 'int', 'int', 'text[]', 'bool', 'int', 'text', 'jsonb', 'jsonb', 'date', 'date',
         ],
         pages.map(({ record: r, issues }) => [
           auditId, r.url, r.statusCode ?? null, r.loadMs ?? null, r.bytes ?? null,
@@ -323,8 +357,20 @@ export async function runAudit(auditId, domainId, hostname) {
           typeof r.depth === 'number' ? r.depth : -1, issues.length,
           r.canonical ?? null, Boolean(r.noindex), r.lang ?? null, r.h2Count ?? null, r.internalLinks ?? null, r.externalLinks ?? null,
           r.inlinks ?? 0, r.images ?? null, r.imagesNoAlt ?? null, r.schemaTypes ?? [], Boolean(r.inSitemap), r.onpageScore ?? null,
-          r.primaryKeyword ?? null,
+          r.primaryKeyword ?? null, r.schemaReport ? JSON.stringify(r.schemaReport) : null,
+          r.outline?.length ? JSON.stringify(r.outline) : null, r.publishedAt ?? null, r.modifiedAt ?? null,
         ]),
+      );
+      // İç bağlantı grafiği: sadece taranan sayfalar arası kenarlar (iç link önerileri ve anchor analizi)
+      const crawled = new Set(pages.map((p) => p.record.url));
+      await bulkInsert(
+        client,
+        'audit_links',
+        ['audit_id', 'source_url', 'target_url', 'anchor'],
+        ['uuid', 'text', 'text', 'text'],
+        pages.flatMap(({ record: r, links, anchors }) =>
+          links.filter((l) => l !== r.url && crawled.has(l)).map((l) => [auditId, r.url, l, anchors?.get(l) ?? null]),
+        ),
       );
       await bulkInsert(
         client,
@@ -336,11 +382,13 @@ export async function runAudit(auditId, domainId, hostname) {
         ),
       );
       await bulkInsert(client, 'audit_issues', ['audit_id', 'code', 'url', 'detail'], ['uuid', 'text', 'text', 'text'], issueRows);
+      await syncSitemapUrls(client, 'domain_sitemap_urls', 'domain_id', domainId, sitemapUrls);
       await client.query(
         "UPDATE audits SET status = 'completed', score = $2, pages_crawled = $3, site_info = $4, finished_at = now() WHERE id = $1",
         [auditId, score, pages.length, JSON.stringify(siteInfo)],
       );
     });
+    await detectAuditChanges(auditId, domainId);
     await afterAudit(auditId, domainId, 'completed');
   } catch (err) {
     await query("UPDATE audits SET status = 'failed', error = $2, finished_at = now() WHERE id = $1", [auditId, String(err.message).slice(0, 500)]);

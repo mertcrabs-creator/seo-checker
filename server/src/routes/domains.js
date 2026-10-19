@@ -14,6 +14,7 @@ import * as authority from '../services/authority/authorityService.js';
 import * as indexing from '../services/indexService.js';
 import * as insight from '../services/rankings/keywordInsightService.js';
 import backlinkRoutes from './backlinks.js';
+import insightRoutes from './insights.js';
 import rankingRoutes from './rankings.js';
 import { badRequest, conflict, notFound } from '../utils/httpError.js';
 import {
@@ -25,7 +26,7 @@ import { z } from 'zod';
 const router = Router();
 const MAX_DOMAINS_PER_USER = 200;
 const computing = new Set(); // aynı alan adında eşzamanlı otorite hesaplaması olmasın
-const GSC_TABLES = ['gsc_daily', 'gsc_query_daily', 'gsc_page_daily', 'gsc_country_daily', 'gsc_device_daily', 'gsc_query_page', 'gsc_query_country', 'gsc_query_country_daily'];
+const GSC_TABLES = ['gsc_daily', 'gsc_query_daily', 'gsc_page_daily', 'gsc_country_daily', 'gsc_device_daily', 'gsc_query_page', 'gsc_query_country', 'gsc_query_country_daily', 'gsc_page_monthly'];
 
 /** Sahiplik kontrolü: başka kullanıcının alan adına erişim 404 döner (varlık sızdırılmaz). */
 async function loadDomain(req, _res, next) {
@@ -332,6 +333,7 @@ router.get('/:id/opportunities/content-gaps', withDomain, requireGsc, async (req
 // ------------------------------------------------------------------ Lokasyon bazlı sıralamalar
 router.use('/:id/rankings', withDomain, rankingRoutes);
 router.use('/:id/backlinks', withDomain, backlinkRoutes);
+router.use('/:id/insights', withDomain, insightRoutes);
 
 // ------------------------------------------------------------------ PageSpeed
 router.post('/:id/pagespeed', heavyJobLimiter, withDomain, validate({ body: pagespeedSchema }), async (req, res) => {

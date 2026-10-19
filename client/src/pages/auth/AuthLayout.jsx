@@ -5,9 +5,10 @@ export function AuthLayout({ children }) {
   return (
     <div className="auth-page">
       <aside className="auth-aside">
-        <div className="brand" style={{ padding: 0, color: '#fff' }}>
-          <div className="brand-mark" style={{ background: 'rgba(255,255,255,0.16)' }}><LineChart size={18} /></div>
-          <div>CR SEO Panel<small style={{ color: 'rgba(255,255,255,0.7)' }}>CrabsMedia</small></div>
+        <div className="brand" style={{ padding: 0, color: '#fff', gap: 14 }}>
+          <img src="/crabsmedia-logo-white.png" alt="CrabsMedia" className="brand-logo" width="148" height="40" style={{ height: 40 }} />
+          <span style={{ width: 1, height: 26, background: 'rgba(255,255,255,0.25)' }} />
+          <span className="row" style={{ gap: 8, fontSize: 14, letterSpacing: '0.02em' }}><LineChart size={16} /> SEO Panel</span>
         </div>
         <div>
           <h2>Organik trafiğinizi tek panelden yönetin.</h2>
@@ -22,7 +23,11 @@ export function AuthLayout({ children }) {
         <small style={{ opacity: 0.6 }}>© {new Date().getFullYear()} CrabsMedia</small>
       </aside>
       <main className="auth-main">
-        <div className="auth-card">{children}</div>
+        <div className="auth-card">
+          <img src="/crabsmedia-logo.png" alt="CrabsMedia" width="148" height="40" className="logo-on-light" style={{ height: 40, width: 'auto' }} />
+          <img src="/crabsmedia-logo-white.png" alt="" aria-hidden="true" width="148" height="40" className="logo-on-dark" style={{ height: 40, width: 'auto' }} />
+          {children}
+        </div>
       </main>
     </div>
   );

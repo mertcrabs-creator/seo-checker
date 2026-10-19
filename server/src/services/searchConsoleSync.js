@@ -119,9 +119,42 @@ export async function syncDomain(domainId, userId) {
   });
 }
 
+/**
+ * İçerik erimesi için aylık sayfa performansı: Search Console'un sakladığı 16 aya kadar takvim ayları.
+ * Eksik aylar ve son iki ay (tamamlanmamış olabilir) her senkronda yenilenir; günlük tablolar 90 günle sınırlı olduğu için ayrı tutulur.
+ */
+const MONTHS = 16;
+export async function syncPageMonthly(domainId, userId) {
+  const { rows } = await query('SELECT gsc_property FROM domains WHERE id = $1 AND user_id = $2', [domainId, userId]);
+  const property = rows[0]?.gsc_property;
+  if (!property) return;
+  const end = addDays(new Date(), -1);
+  const { rows: have } = await query('SELECT DISTINCT month::text AS m FROM gsc_page_monthly WHERE domain_id = $1', [domainId]);
+  const existing = new Set(have.map((r) => r.m));
+  for (let i = 0; i < MONTHS; i++) {
+    const first = new Date(Date.UTC(end.getUTCFullYear(), end.getUTCMonth() - i, 1));
+    const last = new Date(Date.UTC(first.getUTCFullYear(), first.getUTCMonth() + 1, 0));
+    const month = isoDate(first);
+    if (i >= 2 && existing.has(month)) continue;
+    const data = await fetchAll(userId, property, { startDate: month, endDate: isoDate(last < end ? last : end), dimensions: ['page'] }, 4);
+    await withTransaction(async (client) => {
+      await client.query('DELETE FROM gsc_page_monthly WHERE domain_id = $1 AND month = $2', [domainId, month]);
+      await bulkInsert(
+        client,
+        'gsc_page_monthly',
+        ['domain_id', 'month', 'page', 'clicks', 'impressions', 'position'],
+        ['uuid', 'date', 'text', 'int', 'int', 'real'],
+        data.map((r) => [domainId, month, r.keys[0], ...metrics(r)]),
+      );
+    });
+  }
+}
+
 export async function runSync(domainId, userId) {
   try {
     await syncDomain(domainId, userId);
+    // Aylık geçmiş ana senkronu bozmasın (kota/zaman aşımı durumunda bir sonraki senkronda tamamlanır)
+    await syncPageMonthly(domainId, userId).catch((err) => console.warn('[sync] aylık sayfa verisi', err.message));
     await afterSync(domainId);
   } catch (err) {
     await query("UPDATE domains SET sync_status = 'failed', sync_error = $2 WHERE id = $1", [domainId, String(err.message).slice(0, 500)]);

@@ -46,6 +46,61 @@ const hostOf = (link) => {
  * @param {{keyword:string, gl:string, hl:string, device:'desktop'|'mobile', hostname:string}} o
  * @returns {{position:number|null, url:string|null, correctedQuery:string|null, depth:number, top:object[]}}
  */
+// ------------------------------------------------------------------ SERP özellikleri / AI Overview
+const domainsOf = (refs) => [...new Set(refs.map((r) => hostOf(r.link || r.url || '')).filter(Boolean))];
+
+/**
+ * Tek arama (1 hak; AI Overview ayrı sayfada geliyorsa +1): ilk 10 organik sonuç ve sonuç sayfası özellikleri.
+ * @returns {{position:number|null, url:string|null, top:object[], features:object, questions:string[], related:string[], searches:number}}
+ */
+export async function serpFeatures({ keyword, gl, hl, device, hostname }) {
+  const bare = hostname.toLowerCase().replace(/^www\./, '');
+  const isOwnHost = (h) => h === bare || h.endsWith(`.${bare}`);
+  const data = await get('/search.json', { engine: 'google', q: keyword, gl, hl, device, google_domain: 'google.com' });
+  let searches = 1;
+  const top = (data.organic_results || []).slice(0, 10).map((r, i) => ({
+    position: r.position || i + 1, title: String(r.title || '').slice(0, 300), link: r.link || null, domain: hostOf(r.link),
+    own: isOwnHost(hostOf(r.link)), snippet: String(r.snippet || '').slice(0, 300),
+  }));
+  const hit = top.find((t) => t.own);
+
+  let ai = data.ai_overview || null;
+  if (ai?.page_token && !ai.references && config.serpapi.aiOverviewFetch) {
+    try {
+      const more = await get('/search.json', { engine: 'google_ai_overview', page_token: ai.page_token });
+      searches++;
+      ai = more.ai_overview || ai;
+    } catch {
+      /* AI Overview detayı alınamadı; varlığı yine de kaydedilir */
+    }
+  }
+  const aiRefs = ai?.references || [];
+  const box = data.answer_box;
+  const boxLink = box?.link || box?.displayed_link || null;
+  const features = {
+    aiOverview: ai ? { present: true, cited: aiRefs.some((r) => isOwnHost(hostOf(r.link || ''))), sources: domainsOf(aiRefs).slice(0, 10), detail: Boolean(aiRefs.length) } : null,
+    featuredSnippet: box && boxLink ? { domain: hostOf(boxLink), own: isOwnHost(hostOf(boxLink)), type: box.type || null, title: String(box.title || '').slice(0, 200) } : null,
+    peopleAlsoAsk: (data.related_questions || []).length,
+    localPack: Boolean(data.local_results || data.local_map),
+    video: Boolean(data.inline_videos || data.video_results || data.short_videos),
+    images: Boolean(data.inline_images || data.images_results),
+    topStories: Boolean(data.top_stories),
+    shopping: Boolean(data.shopping_results || data.inline_shopping || data.immersive_products),
+    knowledgeGraph: Boolean(data.knowledge_graph),
+    forums: Boolean(data.discussions_and_forums),
+    ads: (data.ads || []).length,
+  };
+  return {
+    position: hit?.position ?? null,
+    url: hit?.link ?? null,
+    top,
+    features,
+    questions: (data.related_questions || []).map((q) => String(q.question || '').slice(0, 300)).filter(Boolean).slice(0, 12),
+    related: (data.related_searches || []).map((r) => String(r.query || '').slice(0, 200)).filter(Boolean).slice(0, 12),
+    searches,
+  };
+}
+
 export async function liveRank({ keyword, gl, hl, device, hostname }) {
   const bare = hostname.toLowerCase().replace(/^www\./, '');
   const isOwn = (link) => {

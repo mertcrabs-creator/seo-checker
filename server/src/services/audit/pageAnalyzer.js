@@ -1,5 +1,6 @@
 import * as cheerio from 'cheerio';
 import { extractKeywords, wordCountOf } from './keywordExtractor.js';
+import { detectSchemaHints, HINT_TYPES, validateJsonLd } from './schemaValidator.js';
 
 const HREFLANG_RE = /^(x-default|[a-z]{2,3}(-[a-z]{4})?(-([a-z]{2}|\d{3}))?)$/i;
 const SKIP_EXT = /\.(jpe?g|png|gif|webp|avif|svg|ico|bmp|pdf|zip|rar|7z|gz|tar|mp4|mp3|webm|mov|avi|wav|css|js|mjs|json|xml|txt|csv|woff2?|ttf|otf|eot|docx?|xlsx?|pptx?|exe|dmg|apk)$/i;
@@ -18,6 +19,34 @@ export function normalizeUrl(href, base) {
 }
 
 export const isCrawlable = (url) => !SKIP_EXT.test(new URL(url).pathname);
+
+/** "2026-03-12T10:00:00+03:00" / "12.03.2026" gibi değerlerden YYYY-MM-DD (makul aralık dışını atar). */
+function isoDay(v) {
+  if (!v) return null;
+  const s = String(v).trim();
+  let d = null;
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(s);
+  if (m) d = new Date(Date.UTC(+m[1], +m[2] - 1, +m[3]));
+  else if (!Number.isNaN(Date.parse(s))) d = new Date(Date.parse(s));
+  if (!d || Number.isNaN(d.getTime())) return null;
+  const y = d.getUTCFullYear();
+  return y >= 1995 && d.getTime() <= Date.now() + 86_400_000 * 2 ? d.toISOString().slice(0, 10) : null;
+}
+
+/** JSON-LD bloklarında ilk datePublished / dateModified değerleri. */
+function schemaDates(blocks) {
+  const out = { published: null, modified: null };
+  const visit = (node) => {
+    if (Array.isArray(node)) return node.forEach(visit);
+    if (!node || typeof node !== 'object') return;
+    out.published ||= isoDay(node.datePublished);
+    out.modified ||= isoDay(node.dateModified);
+    if (node['@graph']) visit(node['@graph']);
+    if (node.mainEntity) visit(node.mainEntity);
+  };
+  blocks.forEach(visit);
+  return out;
+}
 
 const attrLower = ($el, name) => String($el.attr(name) || '').toLowerCase().trim();
 const relHas = ($el, token) => attrLower($el, 'rel').split(/\s+/).includes(token);
@@ -119,10 +148,12 @@ export function analyzePage(res, siteHost) {
   // ---------------------------------------------------- Yapısal veri (metin temizliğinden önce)
   const jsonLd = $('script').filter((_, el) => attrLower($(el), 'type') === 'application/ld+json');
   const schemaTypes = new Set();
+  const blocks = [];
   let invalidSchema = 0;
   jsonLd.each((_, el) => {
     try {
       const parsed = JSON.parse($(el).text());
+      blocks.push(parsed);
       const collect = (node) => {
         if (Array.isArray(node)) return node.forEach(collect);
         if (node && typeof node === 'object') {
@@ -137,6 +168,14 @@ export function analyzePage(res, siteHost) {
   });
   if (invalidSchema) add('schema_invalid', `${invalidSchema} blok`);
   if (!jsonLd.length && !$('[itemscope]').length) add('schema_missing');
+  const schemaItems = validateJsonLd(blocks);
+  const schemaErrors = schemaItems.flatMap((i) => i.errors);
+  const schemaWarnings = schemaItems.flatMap((i) => i.warnings);
+  if (schemaErrors.length) add('schema_errors', schemaErrors.slice(0, 3).join(' · '));
+  if (schemaWarnings.length) add('schema_warnings', schemaWarnings.slice(0, 3).join(' · '));
+  // İçerik yapısal veriye uygun ama ilgili tür işaretlenmemiş (ör. SSS bölümü var, FAQPage yok)
+  const schemaHints = detectSchemaHints($, meta).filter((h) => !HINT_TYPES[h].some((t) => schemaTypes.has(t)));
+  if (schemaHints.length) add('schema_opportunity', schemaHints.join(', '));
 
   // ---------------------------------------------------- Sosyal
   const ogMissing = ['og:title', 'og:description', 'og:image'].filter((k) => !meta(k));
@@ -159,6 +198,7 @@ export function analyzePage(res, siteHost) {
 
   // ---------------------------------------------------- Bağlantılar
   const links = new Set();
+  const anchors = new Map(); // hedef -> ilk boş olmayan anchor metni
   const external = new Set();
   let nofollowInternal = 0;
   let emptyAnchors = 0;
@@ -173,6 +213,7 @@ export function analyzePage(res, siteHost) {
     } else external.add(target);
     const text = $a.text().trim() || $a.attr('aria-label') || $a.attr('title') || $a.find('img[alt]').attr('alt');
     if (!text || !String(text).trim()) emptyAnchors++;
+    else if (internal && !anchors.has(target)) anchors.set(target, String(text).replace(/\s+/g, ' ').trim().slice(0, 200));
   });
   if (nofollowInternal) add('nofollow_internal', `${nofollowInternal} bağlantı`);
   if (emptyAnchors) add('link_no_text', `${emptyAnchors} bağlantı`);
@@ -199,6 +240,9 @@ export function analyzePage(res, siteHost) {
   });
 
   const hasFavicon = $('link').filter((_, el) => relHas($(el), 'icon')).length > 0;
+  const sd = schemaDates(blocks);
+  const publishedAt = sd.published || isoDay(meta('article:published_time')) || isoDay($('article time[datetime]').first().attr('datetime'));
+  const modifiedAt = sd.modified || isoDay(meta('article:modified_time')) || isoDay(meta('og:updated_time'));
 
   return {
     data: {
@@ -218,6 +262,11 @@ export function analyzePage(res, siteHost) {
       imagesNoAlt: noAltImgs.length,
       contentWords: wordCountOf(bodyText),
       hreflangs,
+      schemaReport: schemaItems.length || schemaHints.length ? { items: schemaItems, hints: schemaHints } : null,
+      // İçerik brief'i ve rakip karşılaştırması için H2/H3 yapısı
+      outline: outline.filter((h) => (h.level === 2 || h.level === 3) && h.text).slice(0, 60).map((h) => ({ level: h.level, text: h.text.slice(0, 160) })),
+      publishedAt,
+      modifiedAt,
     },
     keywords,
     // Tek sayfa analizi (analyze uç noktası) için; tarama bunları saklamaz
@@ -227,5 +276,6 @@ export function analyzePage(res, siteHost) {
     },
     issues,
     links: [...links].slice(0, 1000),
+    anchors,
   };
 }

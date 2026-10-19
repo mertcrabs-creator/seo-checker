@@ -103,6 +103,7 @@ model Domain {
   indexError        String?   @map("index_error")
   indexUpdatedAt    DateTime? @map("index_updated_at") @db.Timestamptz(6)
   sslExpiresAt      DateTime? @map("ssl_expires_at") @db.Timestamptz(6)
+  monitorCheckedAt  DateTime? @map("monitor_checked_at") @db.Timestamptz(6)
 
   user                 User                   @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
   rankSnapshots        RankSnapshot[]
@@ -122,6 +123,16 @@ model Domain {
   authoritySnapshots   AuthoritySnapshot[]
   audits               Audit[]
   pagespeedReports     PagespeedReport[]
+  pageWatch            PageWatch[]
+  pageChanges          PageChange[]
+  gscPageMonthly       GscPageMonthly[]
+  annotations          Annotation[]
+  competitors          Competitor[]
+  logAnalyses          LogAnalysis[]
+  serpTracked          SerpTrackedKeyword[]
+  serpSnapshots        SerpSnapshot[]
+  sitemapUrls          DomainSitemapUrl[]
+  contentBriefs        ContentBrief[]
 
   @@unique([userId, hostname])
   @@map("domains")
@@ -392,6 +403,7 @@ model Audit {
   pages    AuditPage[]
   issues   AuditIssue[]   @ignore
   keywords AuditKeyword[]
+  links    AuditLink[]
 
   @@index([domainId, createdAt(sort: Desc)], map: "audits_domain_idx")
   @@map("audits")
@@ -424,6 +436,12 @@ model AuditPage {
   inSitemap       Boolean  @default(false) @map("in_sitemap")
   onpageScore     Int?     @map("onpage_score")
   primaryKeyword  String?  @map("primary_keyword")
+  /// JSON-LD doğrulaması: [{ type, errors[], warnings[] }] + içerikten çıkarılan şema ipuçları
+  schemaReport    Json?    @map("schema_report") @db.JsonB
+  /// H2/H3 başlık yapısı (içerik brief'i ve rakip karşılaştırması için)
+  outline         Json?    @db.JsonB
+  publishedAt     DateTime? @map("published_at") @db.Date
+  modifiedAt      DateTime? @map("modified_at") @db.Date
 
   audit Audit @relation(fields: [auditId], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
@@ -555,4 +573,282 @@ model PagespeedReport {
 
   @@index([domainId, strategy, createdAt(sort: Desc)], map: "pagespeed_domain_idx")
   @@map("pagespeed_reports")
+}
+
+// ---------------------------------------------------------------- Analiz derinleştirme
+/// Taramadaki iç bağlantı grafiği (iç link önerileri ve anchor analizi için)
+model AuditLink {
+  auditId   String  @map("audit_id") @db.Uuid
+  sourceUrl String  @map("source_url")
+  targetUrl String  @map("target_url")
+  anchor    String?
+
+  audit Audit @relation(fields: [auditId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@id([auditId, sourceUrl, targetUrl])
+  @@index([auditId, targetUrl], map: "audit_links_target_idx")
+  @@map("audit_links")
+}
+
+/// Önemli sayfaların son izleme anlık görüntüsü (6 saatte bir kontrol edilir)
+model PageWatch {
+  domainId        String   @map("domain_id") @db.Uuid
+  url             String
+  statusCode      Int?     @map("status_code")
+  noindex         Boolean  @default(false)
+  canonical       String?
+  title           String?
+  metaDescription String?  @map("meta_description")
+  h1              String?
+  robotsBlocked   Boolean  @default(false) @map("robots_blocked")
+  error           String?
+  checkedAt       DateTime @default(now()) @map("checked_at") @db.Timestamptz(6)
+
+  domain Domain @relation(fields: [domainId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@id([domainId, url])
+  @@map("page_watch")
+}
+
+/// Sayfa değişiklik günlüğü (tarama karşılaştırması veya izleme): title, meta, H1, canonical, noindex, durum kodu...
+model PageChange {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  domainId  String   @map("domain_id") @db.Uuid
+  url       String
+  field     String
+  oldValue  String?  @map("old_value")
+  newValue  String?  @map("new_value")
+  /// critical | warning | notice
+  severity  String
+  /// audit | monitor
+  source    String
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  domain Domain @relation(fields: [domainId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([domainId, createdAt(sort: Desc)], map: "page_changes_domain_idx")
+  @@map("page_changes")
+}
+
+/// Aylık sayfa performansı (16 aya kadar; içerik erimesi analizi için)
+model GscPageMonthly {
+  domainId    String   @map("domain_id") @db.Uuid
+  month       DateTime @db.Date
+  page        String
+  clicks      Int
+  impressions Int
+  position    Float    @db.Real
+
+  domain Domain @relation(fields: [domainId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@id([domainId, month, page])
+  @@index([domainId, page], map: "gsc_page_monthly_page_idx")
+  @@map("gsc_page_monthly")
+}
+
+/// Grafik notları (yayın, kampanya, site değişikliği...)
+model Annotation {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  domainId  String   @map("domain_id") @db.Uuid
+  date      DateTime @db.Date
+  title     String
+  detail    String?
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  domain Domain @relation(fields: [domainId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([domainId, date], map: "annotations_domain_idx")
+  @@map("annotations")
+}
+
+/// Rakip site taraması (ücretli sağlayıcı olmadan sayfa içi karşılaştırma)
+model Competitor {
+  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  domainId     String    @map("domain_id") @db.Uuid
+  hostname     String
+  status       String    @default("queued")
+  error        String?
+  pagesCrawled Int       @default(0) @map("pages_crawled")
+  score        Int?
+  siteInfo     Json      @default("{}") @map("site_info") @db.JsonB
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  finishedAt   DateTime? @map("finished_at") @db.Timestamptz(6)
+
+  domain   Domain              @relation(fields: [domainId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  pages       CompetitorPage[]
+  keywords    CompetitorKeyword[]
+  sitemapUrls CompetitorSitemapUrl[]
+  changes     CompetitorChange[]
+
+  @@unique([domainId, hostname])
+  @@map("competitors")
+}
+
+model CompetitorPage {
+  competitorId    String   @map("competitor_id") @db.Uuid
+  url             String
+  statusCode      Int?     @map("status_code")
+  title           String?
+  h1              String?
+  metaDescription String?  @map("meta_description")
+  wordCount       Int?     @map("word_count")
+  primaryKeyword  String?  @map("primary_keyword")
+  schemaTypes     String[] @default([]) @map("schema_types")
+  onpageScore     Int?     @map("onpage_score")
+  depth           Int      @default(0)
+  inlinks         Int      @default(0)
+  lang            String?
+  outline         Json?    @db.JsonB
+  publishedAt     DateTime? @map("published_at") @db.Date
+  modifiedAt      DateTime? @map("modified_at") @db.Date
+  schemaReport    Json?    @map("schema_report") @db.JsonB
+
+  competitor Competitor @relation(fields: [competitorId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@id([competitorId, url])
+  @@map("competitor_pages")
+}
+
+model CompetitorKeyword {
+  competitorId String  @map("competitor_id") @db.Uuid
+  url          String
+  keyword      String
+  score        Float   @db.Real
+  inTitle      Boolean @map("in_title")
+  inH1         Boolean @map("in_h1")
+
+  competitor Competitor @relation(fields: [competitorId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@id([competitorId, url, keyword])
+  @@index([competitorId, keyword], map: "competitor_keywords_keyword_idx")
+  @@map("competitor_keywords")
+}
+
+/// Sunucu log analizi özeti (log tarayıcıda ayrıştırılır; sadece bot istatistikleri gönderilir)
+model LogAnalysis {
+  id         String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  domainId   String    @map("domain_id") @db.Uuid
+  fileName   String    @map("file_name")
+  rangeStart DateTime? @map("range_start") @db.Timestamptz(6)
+  rangeEnd   DateTime? @map("range_end") @db.Timestamptz(6)
+  totalLines Int       @map("total_lines")
+  botHits    Int       @map("bot_hits")
+  summary    Json      @db.JsonB
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  domain Domain @relation(fields: [domainId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([domainId, createdAt(sort: Desc)], map: "log_analyses_domain_idx")
+  @@map("log_analyses")
+}
+
+// ---------------------------------------------------------------- İçerik ve rakip istihbaratı
+/// Düzenli SERP özelliği / AI Overview kontrolü yapılan kelimeler (SerpApi kotasıyla sınırlı)
+model SerpTrackedKeyword {
+  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  domainId      String    @map("domain_id") @db.Uuid
+  keyword       String
+  /// Search Console ülke kodu (alpha-3)
+  country       String
+  device        String    @default("mobile")
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  lastCheckedAt DateTime? @map("last_checked_at") @db.Timestamptz(6)
+
+  domain Domain @relation(fields: [domainId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([domainId, keyword, country, device])
+  @@map("serp_tracked_keywords")
+}
+
+/// Bir kelimenin Google sonuç sayfası anlık görüntüsü: sıra, ilk 10, AI Overview, snippet, SSS kutusu vb.
+model SerpSnapshot {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  domainId  String   @map("domain_id") @db.Uuid
+  keyword   String
+  country   String
+  device    String
+  position  Int?
+  url       String?
+  features  Json     @default("{}") @db.JsonB
+  top       Json     @default("[]") @db.JsonB
+  questions String[] @default([])
+  related   String[] @default([])
+  checkedAt DateTime @default(now()) @map("checked_at") @db.Timestamptz(6)
+
+  domain Domain @relation(fields: [domainId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([domainId, keyword, checkedAt(sort: Desc)], map: "serp_snapshots_domain_idx")
+  @@map("serp_snapshots")
+}
+
+/// CrUX History API önbelleği (köken + cihaz başına 25 haftalık Core Web Vitals; herkese açık veri)
+model CruxHistory {
+  origin     String
+  formFactor String   @map("form_factor")
+  data       Json?    @db.JsonB
+  error      String?
+  fetchedAt  DateTime @default(now()) @map("fetched_at") @db.Timestamptz(6)
+
+  @@id([origin, formFactor])
+  @@map("crux_history")
+}
+
+/// Sitenin site haritasındaki URL'ler (yayın hızı / tazelik analizi)
+model DomainSitemapUrl {
+  domainId  String    @map("domain_id") @db.Uuid
+  url       String
+  lastmod   DateTime? @db.Date
+  firstSeen DateTime  @default(now()) @map("first_seen") @db.Timestamptz(6)
+
+  domain Domain @relation(fields: [domainId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@id([domainId, url])
+  @@map("domain_sitemap_urls")
+}
+
+/// Rakibin site haritasındaki URL'ler: yeni yayınlanan sayfaların tespiti
+model CompetitorSitemapUrl {
+  competitorId String    @map("competitor_id") @db.Uuid
+  url          String
+  lastmod      DateTime? @db.Date
+  firstSeen    DateTime  @default(now()) @map("first_seen") @db.Timestamptz(6)
+
+  competitor Competitor @relation(fields: [competitorId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@id([competitorId, url])
+  @@map("competitor_sitemap_urls")
+}
+
+/// Rakip değişiklik günlüğü: yeni/kaldırılan sayfa, title/H1 değişikliği, içerik genişletme, yapısal veri
+model CompetitorChange {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  competitorId String   @map("competitor_id") @db.Uuid
+  url          String
+  kind         String
+  oldValue     String?  @map("old_value")
+  newValue     String?  @map("new_value")
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  competitor Competitor @relation(fields: [competitorId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([competitorId, createdAt(sort: Desc)], map: "competitor_changes_idx")
+  @@map("competitor_changes")
+}
+
+/// İçerik brief'i: hedef kelime için Google ilk 10 + rakip + Search Console verisinden yazar planı
+model ContentBrief {
+  id         String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  domainId   String    @map("domain_id") @db.Uuid
+  keyword    String
+  country    String?
+  status     String    @default("queued")
+  error      String?
+  data       Json?     @db.JsonB
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  finishedAt DateTime? @map("finished_at") @db.Timestamptz(6)
+
+  domain Domain @relation(fields: [domainId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([domainId, createdAt(sort: Desc)], map: "content_briefs_domain_idx")
+  @@map("content_briefs")
 }

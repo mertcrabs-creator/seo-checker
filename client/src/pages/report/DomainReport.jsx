@@ -50,9 +50,10 @@ export default function DomainReport() {
 
   return (
     <div className="report">
-      <header className="row" style={{ justifyContent: 'space-between', gap: 12, marginBottom: 18 }}>
+      <header className="row" style={{ justifyContent: 'space-between', gap: 12, marginBottom: 18, paddingBottom: 16, borderBottom: '2px solid var(--primary)' }}>
         <div>
-          <div className="muted" style={{ fontSize: 12.5 }}>SEO Performans Raporu · CrabsMedia</div>
+          <img src="/crabsmedia-logo.png" alt="CrabsMedia" width="130" height="35" style={{ height: 35, width: 'auto', marginBottom: 10, display: 'block' }} />
+          <div className="muted" style={{ fontSize: 11, fontWeight: 600, letterSpacing: '0.14em', textTransform: 'uppercase' }}>SEO Performans Raporu</div>
           <h1 style={{ fontSize: 26 }}>{d.hostname}</h1>
           <div className="text-2" style={{ fontSize: 13 }}>
             {perf.data?.range ? `${fmt.dateShort(perf.data.range.start)} – ${fmt.dateShort(perf.data.range.end)}` : `Son ${days} gün`} · Oluşturulma {fmt.dateTime(new Date())}

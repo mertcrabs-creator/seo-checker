@@ -3,9 +3,12 @@ import { query } from '../db/pool.js';
 import { checkSsl } from './alertService.js';
 import { computeAuthority } from './authority/authorityService.js';
 import { runAudit } from './audit/auditor.js';
+import { runMonitor } from './changeService.js';
+import { runCompetitor } from './insights/competitorService.js';
+import { dueDomains, runChecks } from './insights/serpTrackingService.js';
 import { runRefresh as runBacklinks } from './backlinks/backlinkService.js';
 import { runInspection } from './indexService.js';
-import { auditQueue, backlinkQueue, indexQueue, syncQueue } from './jobQueue.js';
+import { auditQueue, backlinkQueue, competitorQueue, indexQueue, monitorQueue, serpQueue, syncQueue } from './jobQueue.js';
 import { runSync } from './searchConsoleSync.js';
 
 /**
@@ -69,6 +72,29 @@ async function tick() {
       LIMIT 2`,
   );
   for (const d of auth) await run('authority', () => computeAuthority(d));
+
+  // Önemli sayfa izleme (noindex / hata kodu / canonical / title değişiklikleri): varsayılan 6 saatte bir
+  const { rows: mon } = await query(
+    `SELECT d.id, d.hostname FROM domains d
+      WHERE d.monitor_checked_at IS NULL OR d.monitor_checked_at < now() - make_interval(hours => $1::int)
+      ORDER BY d.monitor_checked_at NULLS FIRST LIMIT 5`,
+    [config.monitorIntervalHours],
+  );
+  for (const d of mon) if (!monitorQueue.has(d.id)) monitorQueue.add(d.id, () => runMonitor(d));
+
+  // Rakipler: haftalık yeniden tarama (yeni sayfa / güncelleme takibi)
+  const { rows: rivals } = await query(
+    `SELECT id, hostname FROM competitors WHERE status IN ('completed', 'failed') AND (finished_at IS NULL OR finished_at < now() - interval '7 days')
+      ORDER BY finished_at NULLS FIRST LIMIT 1`,
+  );
+  for (const c of rivals) {
+    if (competitorQueue.has(c.id)) continue;
+    await query("UPDATE competitors SET status = 'queued' WHERE id = $1", [c.id]);
+    competitorQueue.add(c.id, () => runCompetitor(c.id, c.hostname));
+  }
+
+  // SERP özellikleri / AI Overview: takip edilen kelimeler (varsayılan haftalık, SerpApi kotası korunarak)
+  for (const d of await dueDomains(2)) if (!serpQueue.has(d.id)) serpQueue.add(d.id, () => runChecks(d));
 
   // SSL: günlük
   const { rows: all } = await query('SELECT id, hostname FROM domains');

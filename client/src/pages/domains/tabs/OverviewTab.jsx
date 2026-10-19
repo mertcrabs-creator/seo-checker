@@ -1,9 +1,10 @@
 import { useQuery } from '@tanstack/react-query';
-import { Eye, Hash, MousePointerClick, Percent, TrendingUp } from 'lucide-react';
+import { Eye, Hash, MousePointerClick, Percent, StickyNote, TrendingUp } from 'lucide-react';
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { domainApi } from '../../../api/endpoints';
-import TrendChart, { METRICS } from '../../../components/charts/TrendChart';
+import { domainApi, insightApi } from '../../../api/endpoints';
+import AnnotationsModal from '../../../components/AnnotationsModal';
+import TrendChart, { METRICS, UPDATE_COLORS } from '../../../components/charts/TrendChart';
 import HealthSpeedCards from '../../../components/HealthSpeedCards';
 import { PositionPill } from '../../../components/ui/DataTable';
 import { Delta, EmptyState, Skeleton } from '../../../components/ui/Feedback';
@@ -52,8 +53,16 @@ function TopList({ title, to, rows, loading, renderKey }) {
 
 export default function OverviewTab({ domain, days }) {
   const [metric, setMetric] = useState('clicks');
+  const [notesOpen, setNotesOpen] = useState(false);
   const id = domain.id;
   const perf = useQuery({ queryKey: ['gsc', id, 'performance', days], queryFn: () => domainApi.performance(id, { days }) });
+  const range = perf.data?.range;
+  const notes = useQuery({
+    queryKey: ['annotations', id, range?.start, range?.end],
+    queryFn: () => insightApi.annotations(id, { start: range.start, end: range.end }),
+    enabled: Boolean(range),
+    staleTime: 5 * 60_000,
+  });
   const top = { sort: 'clicks', order: 'desc', page: 1, pageSize: 8, days };
   const kw = useQuery({ queryKey: ['gsc', id, 'keywords', top], queryFn: () => domainApi.keywords(id, top) });
   const pages = useQuery({ queryKey: ['gsc', id, 'pages', top], queryFn: () => domainApi.pages(id, top) });
@@ -98,16 +107,29 @@ export default function OverviewTab({ domain, days }) {
               {cur && ` · ${fmt.num(cur.keywords)} anahtar kelime`}
             </p>
           </div>
-          <div className="segmented" role="tablist" aria-label="Metrik">
-            {Object.entries(METRICS).map(([k, m]) => (
-              <button key={k} className={metric === k ? 'active' : ''} onClick={() => setMetric(k)} role="tab" aria-selected={metric === k}>
-                {m.label}
-              </button>
-            ))}
+          <div className="row">
+            <div className="segmented" role="tablist" aria-label="Metrik">
+              {Object.entries(METRICS).map(([k, m]) => (
+                <button key={k} className={metric === k ? 'active' : ''} onClick={() => setMetric(k)} role="tab" aria-selected={metric === k}>
+                  {m.label}
+                </button>
+              ))}
+            </div>
+            <button className="btn btn-secondary btn-sm" onClick={() => setNotesOpen(true)} title="Grafik notları ve Google güncellemeleri">
+              <StickyNote size={15} /> Notlar{notes.data?.notes?.length ? ` (${notes.data.notes.length})` : ''}
+            </button>
           </div>
         </div>
         <div className="card-body">
-          {perf.isLoading ? <Skeleton height={280} /> : <TrendChart data={perf.data.daily} metric={metric} />}
+          {perf.isLoading ? <Skeleton height={280} /> : <TrendChart data={perf.data.daily} metric={metric} annotations={notes.data} />}
+          {notes.data && (notes.data.updates.length > 0 || notes.data.notes.length > 0 || notes.data.changes.length > 0) && (
+            <div className="row muted" style={{ gap: 16, fontSize: 12, marginTop: 10, flexWrap: 'wrap' }}>
+              {notes.data.updates.some((u) => u.kind === 'core') && <span className="row" style={{ gap: 6 }}><span className="dot" style={{ background: UPDATE_COLORS.core, opacity: 0.6 }} /> Google core update</span>}
+              {notes.data.updates.some((u) => u.kind === 'spam') && <span className="row" style={{ gap: 6 }}><span className="dot" style={{ background: UPDATE_COLORS.spam, opacity: 0.6 }} /> Spam update</span>}
+              {notes.data.notes.length > 0 && <span className="row" style={{ gap: 6 }}><span className="dot" style={{ background: 'var(--primary)' }} /> Notunuz</span>}
+              {notes.data.changes.length > 0 && <span className="row" style={{ gap: 6 }}><span className="dot" style={{ background: 'var(--critical)' }} /> Sitede tespit edilen önemli değişiklik</span>}
+            </div>
+          )}
         </div>
       </div>
 
@@ -124,6 +146,7 @@ export default function OverviewTab({ domain, days }) {
       </div>
 
       <HealthSpeedCards domainId={id} />
+      {notesOpen && <AnnotationsModal domainId={id} data={notes.data} onClose={() => setNotesOpen(false)} />}
     </div>
   );
 }

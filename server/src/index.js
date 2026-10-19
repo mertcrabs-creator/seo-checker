@@ -19,6 +19,8 @@ async function recoverInterruptedJobs() {
   await query("UPDATE domains SET rank_status = 'failed', rank_error = 'Sunucu yeniden başlatıldı' WHERE rank_status = 'running'");
   await query("UPDATE domains SET backlink_status = 'failed', backlink_error = 'Sunucu yeniden başlatıldı' WHERE backlink_status = 'running'");
   await query("UPDATE domains SET index_status = 'failed', index_error = 'Sunucu yeniden başlatıldı' WHERE index_status = 'running'");
+  await query("UPDATE competitors SET status = 'failed', error = 'Sunucu yeniden başlatıldı' WHERE status IN ('queued', 'running')");
+  await query("UPDATE content_briefs SET status = 'failed', error = 'Sunucu yeniden başlatıldı' WHERE status IN ('queued', 'running')");
 }
 await recoverInterruptedJobs().catch((err) => {
   console.error('[startup] veritabanına ulaşılamadı, 30 sn sonra tekrar denenecek:', err.message);

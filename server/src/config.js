@@ -38,6 +38,15 @@ const schema = z.object({
   SCHEDULER_ENABLED: z.enum(['true', 'false', '1', '0']).default('true').transform((v) => v === 'true' || v === '1'),
   INDEX_INSPECT_LIMIT: z.coerce.number().int().min(1).max(2000).default(200),
   OPEN_PAGERANK_API_KEY: z.string().optional().default(''),
+  MONITOR_PAGES: z.coerce.number().int().min(1).max(100).default(25),
+  MONITOR_INTERVAL_HOURS: z.coerce.number().int().min(1).max(168).default(6),
+  COMPETITOR_MAX_PAGES: z.coerce.number().int().min(10).max(500).default(100),
+  CRUX_API_KEY: z.string().optional().default(''),
+  SERP_TRACK_LIMIT: z.coerce.number().int().min(1).max(200).default(20),
+  SERP_TRACK_INTERVAL_DAYS: z.coerce.number().int().min(1).max(60).default(7),
+  SERP_QUOTA_RESERVE: z.coerce.number().int().min(0).max(1000).default(20),
+  SERP_AI_OVERVIEW_FETCH: z.enum(['true', 'false', '1', '0']).default('true').transform((v) => v === 'true' || v === '1'),
+  AUTOCOMPLETE_ENABLED: z.enum(['true', 'false', '1', '0']).default('true').transform((v) => v === 'true' || v === '1'),
 });
 
 const parsed = schema.safeParse(process.env);
@@ -88,11 +97,21 @@ export const config = Object.freeze({
     checkDepth: env.RANK_CHECK_DEPTH,
     maxLocations: env.RANK_MAX_LOCATIONS,
   },
-  serpapi: { key: env.SERPAPI_KEY, enabled: Boolean(env.SERPAPI_KEY), pages: env.SERP_CHECK_PAGES },
+  serpapi: {
+    key: env.SERPAPI_KEY, enabled: Boolean(env.SERPAPI_KEY), pages: env.SERP_CHECK_PAGES,
+    trackLimit: env.SERP_TRACK_LIMIT, trackIntervalDays: env.SERP_TRACK_INTERVAL_DAYS, quotaReserve: env.SERP_QUOTA_RESERVE,
+    aiOverviewFetch: env.SERP_AI_OVERVIEW_FETCH,
+  },
   bing: { key: env.BING_WEBMASTER_API_KEY, enabled: Boolean(env.BING_WEBMASTER_API_KEY) },
   backlinkVerifyLimit: env.BACKLINK_VERIFY_LIMIT,
   telegram: { token: env.TELEGRAM_BOT_TOKEN, chatId: env.TELEGRAM_CHAT_ID, enabled: Boolean(env.TELEGRAM_BOT_TOKEN && env.TELEGRAM_CHAT_ID) },
   schedulerEnabled: env.SCHEDULER_ENABLED,
   indexInspectLimit: env.INDEX_INSPECT_LIMIT,
   openPageRankKey: env.OPEN_PAGERANK_API_KEY,
+  monitorPages: env.MONITOR_PAGES,
+  monitorIntervalHours: env.MONITOR_INTERVAL_HOURS,
+  competitorMaxPages: env.COMPETITOR_MAX_PAGES,
+  // CrUX History API anahtarı (yoksa PageSpeed anahtarı denenir; ikisi aynı Google Cloud projesinden olabilir)
+  cruxKey: env.CRUX_API_KEY || env.PAGESPEED_API_KEY,
+  autocompleteEnabled: env.AUTOCOMPLETE_ENABLED,
 });

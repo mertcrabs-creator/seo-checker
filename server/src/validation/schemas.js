@@ -252,3 +252,90 @@ export const indexPagesQuery = z.object({
   pageSize: paging.pageSize,
   view: z.enum(['all', 'indexed', 'not_indexed', 'canonical', 'errors']).default('all'),
 });
+
+// ------------------------------------------------------------------ Analiz derinleştirme
+const isoDay = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Geçersiz tarih').refine((v) => !Number.isNaN(Date.parse(`${v}T00:00:00Z`)), 'Geçersiz tarih');
+
+export const changesQuery = z.object({
+  search: paging.search,
+  severity: z.enum(['critical', 'warning', 'notice']).optional(),
+  field: z.enum(['status_code', 'noindex', 'canonical', 'title', 'h1', 'meta_description', 'word_count', 'robots_blocked']).optional(),
+  days: z.coerce.number().int().min(1).max(365).default(30),
+  page: paging.page,
+  pageSize: paging.pageSize,
+});
+
+export const decayPageQuery = z.object({
+  url: z.string().trim().url().max(2000),
+  peakMonth: z.string().regex(/^\d{4}-\d{2}-01$/, 'Geçersiz ay'),
+});
+
+export const annotationRangeQuery = z
+  .object({ start: isoDay, end: isoDay })
+  .refine((v) => v.start <= v.end, 'Başlangıç bitişten sonra olamaz');
+export const annotationSchema = z.object({
+  date: isoDay,
+  title: z.string().trim().min(1, 'Başlık girin').max(120),
+  detail: z.string().trim().max(500).optional().nullable(),
+});
+export const annotationIdParam = z.object({ annotationId: z.string().uuid() });
+
+export const competitorSchema = z.object({ hostname });
+export const competitorIdParam = z.object({ competitorId: z.string().uuid() });
+export const logIdParam = z.object({ logId: z.string().uuid() });
+
+// ------------------------------------------------------------------ İçerik ve rakip istihbaratı
+const alpha3 = z.string().trim().regex(/^[a-z]{3}$/i, 'Geçersiz ülke').transform((v) => v.toUpperCase());
+export const serpTrackSchema = z.object({
+  items: z.array(z.object({
+    keyword: z.string().trim().min(1, 'Kelime girin').max(200),
+    country: alpha3,
+    device: z.enum(['mobile', 'desktop']).default('mobile'),
+  })).min(1).max(50),
+});
+export const serpTrackIdParam = z.object({ trackId: z.string().uuid() });
+export const briefSchema = z.object({
+  keyword: z.string().trim().min(2, 'Kelime girin').max(200),
+  country: alpha3.optional(),
+  urls: z.array(z.string().trim().url().max(2000)).max(8).default([]),
+});
+export const briefIdParam = z.object({ briefId: z.string().uuid() });
+export const competitorChangesQuery = z.object({
+  competitorId: z.string().uuid().optional(),
+  kind: z.enum(['new_page', 'removed_page', 'title', 'h1', 'content_expanded', 'content_reduced', 'schema_added']).optional(),
+  page: z.coerce.number().int().min(1).max(1000).default(1),
+  pageSize: z.coerce.number().int().min(5).max(100).default(50),
+});
+export const logLatestQuery = z.object({ id: z.string().uuid().optional() });
+
+// Geçersiz IP tüm isteği reddetmesin: doğrulama servisi IP olmayan değerleri "unknown" sayar
+const ipText = z.string().trim().max(45);
+const botFamily = z.enum(['google', 'bing', 'openai', 'perplexity']);
+export const logVerifySchema = z.object({
+  ips: z.array(z.object({ ip: ipText, bot: botFamily })).min(1).max(5000),
+});
+
+const count = z.number().int().min(0).max(1e9);
+const counts = z.record(z.string().max(10), count).refine((o) => Object.keys(o).length <= 60, 'Çok fazla anahtar');
+const logPath = z.string().max(2000);
+/** Tarayıcıda ayrıştırılan log özeti; sadece bot istatistikleri (ziyaretçi verisi yok). */
+export const logSummarySchema = z.object({
+  fileName: z.string().trim().min(1).max(255),
+  format: z.string().max(40),
+  totalLines: count,
+  parsedLines: count,
+  rangeStart: z.string().datetime({ offset: true }).nullable(),
+  rangeEnd: z.string().datetime({ offset: true }).nullable(),
+  bots: z.array(z.object({
+    key: z.string().max(40), label: z.string().max(80), group: z.enum(['google', 'bing', 'ai', 'seo', 'other']),
+    hits: count, verified: count, fake: count, unverified: count,
+  })).max(60),
+  daily: z.array(z.object({ date: isoDay, google: count, bing: count, ai: count, seo: count, other: count })).max(400),
+  statuses: z.array(z.object({ code: z.string().max(5), google: count, all: count })).max(80),
+  fileTypes: z.array(z.object({ type: z.string().max(20), hits: count })).max(30),
+  urls: z.array(z.object({
+    path: logPath, hits: count, google: count, bing: count, ai: count, statuses: counts, lastGoogle: z.string().datetime({ offset: true }).nullable(),
+  })).max(5000),
+  fake: z.array(z.object({ ip: ipText, bot: botFamily, hits: count })).max(200),
+  ai: z.array(z.object({ bot: z.string().max(40), hits: count, urls: count, topPaths: z.array(z.object({ path: logPath, hits: count })).max(10) })).max(30),
+});

@@ -5,6 +5,7 @@ import { errorMessage } from '../../../api/client';
 import { domainApi } from '../../../api/endpoints';
 import { Alert, EmptyState, ScoreRing, Skeleton, Spinner, scoreStatus } from '../../../components/ui/Feedback';
 import { useToast } from '../../../components/ui/Toast';
+import CruxTrend from '../../../components/CruxTrend';
 import { fmt } from '../../../utils/format';
 
 const LAB_METRICS = [
@@ -157,6 +158,7 @@ export default function SpeedTab({ domain }) {
       ) : (
         <Report r={report} />
       )}
+      <CruxTrend domain={domain} />
     </div>
   );
 }

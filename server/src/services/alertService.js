@@ -7,7 +7,7 @@ import { isBlockedIp } from '../utils/safeFetch.js';
 
 /**
  * Otomatik izleme uyarıları. Her iş (senkron, tarama, backlink) bittiğinde ilgili kontrol çalışır.
- * Aynı alan adı + tür için 24 saat içinde tekrar uyarı üretilmez. Telegram opsiyoneldir.
+ * Aynı alan adı + tür için varsayılan 24 saat (dedupeHours) içinde tekrar uyarı üretilmez. Telegram opsiyoneldir.
  */
 
 async function sendTelegram(text) {
@@ -26,14 +26,14 @@ async function sendTelegram(text) {
 
 const ICON = { critical: '🔴', warning: '🟠', notice: '🔵' };
 
-export async function createAlert({ domainId, type, severity, title, detail = null, data = {} }) {
+export async function createAlert({ domainId, type, severity, title, detail = null, data = {}, dedupeHours = 24 }) {
   const { rows } = await query(
     `INSERT INTO alerts (user_id, domain_id, type, severity, title, detail, data)
      SELECT d.user_id, d.id, $2, $3, $4, $5, $6 FROM domains d
       WHERE d.id = $1 AND NOT EXISTS (
-        SELECT 1 FROM alerts a WHERE a.domain_id = d.id AND a.type = $2 AND a.created_at > now() - interval '24 hours')
+        SELECT 1 FROM alerts a WHERE a.domain_id = d.id AND a.type = $2 AND a.created_at > now() - make_interval(hours => $7::int))
      RETURNING id, (SELECT hostname FROM domains WHERE id = $1) AS hostname`,
-    [domainId, type, severity, title.slice(0, 300), detail ? String(detail).slice(0, 2000) : null, JSON.stringify(data)],
+    [domainId, type, severity, title.slice(0, 300), detail ? String(detail).slice(0, 2000) : null, JSON.stringify(data), dedupeHours],
   );
   if (rows[0]) await sendTelegram(`${ICON[severity] || ''} ${rows[0].hostname}\n${title}${detail ? `\n${detail}` : ''}`);
   return rows[0] || null;

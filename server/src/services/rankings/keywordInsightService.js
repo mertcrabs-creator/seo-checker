@@ -68,7 +68,7 @@ export async function liveInsight(domain, userId, keyword) {
 }
 
 /** Ülkedeki kullanıcıların arama dili: site dili o ülkede konuşuluyorsa o, değilse ülkenin ana dili. */
-async function searchLanguage(domain, country) {
+export async function searchLanguage(domain, country) {
   const spoken = countryLanguages(country);
   const { languages } = await targetLanguages(domain);
   return languages.find((l) => spoken.includes(l)) || spoken[0] || languages[0] || 'en';

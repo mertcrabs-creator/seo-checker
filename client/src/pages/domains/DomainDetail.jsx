@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-  Activity, ArrowLeft, Award, ExternalLink, FileText, Gauge, KeyRound, LayoutDashboard, Lightbulb, FileCheck2, FileBarChart, Link2, MapPin, RefreshCw, Settings2, Trash2, Trophy,
+  Activity, ArrowLeft, Award, ExternalLink, FileText, Gauge, History, KeyRound, LayoutDashboard, Lightbulb, FileCheck2, FileBarChart, Link2, MapPin, Microscope, RefreshCw, Settings2, Trash2, Trophy,
 } from 'lucide-react';
 import { lazy, Suspense, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
@@ -38,6 +38,8 @@ const TABS = [
   { key: 'health', label: 'Site Sağlığı', icon: Activity, Comp: lazy(() => import('./tabs/HealthTab')) },
   { key: 'speed', label: 'Hız & Web Vitals', icon: Gauge, Comp: lazy(() => import('./tabs/SpeedTab')) },
   { key: 'opportunities', label: 'Fırsatlar', icon: Lightbulb, Comp: lazy(() => import('./tabs/OpportunitiesTab')), dual: true },
+  { key: 'insights', label: 'Derin Analiz', icon: Microscope, Comp: lazy(() => import('./insights/InsightsTab')) },
+  { key: 'changes', label: 'Değişiklikler', icon: History, Comp: lazy(() => import('./tabs/ChangesTab')) },
 ];
 const isDual = (t) => Boolean(t.SiteComp || t.dual);
 

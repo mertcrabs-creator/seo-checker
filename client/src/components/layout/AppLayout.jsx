@@ -40,11 +40,11 @@ export default function AppLayout() {
     <div className="app-shell">
       <aside className={`sidebar ${open ? 'open' : ''}`}>
         <div className="brand">
-          <div className="brand-mark"><LineChart size={18} /></div>
-          <div>
-            CR SEO Panel
-            <small>CrabsMedia</small>
-          </div>
+          <img src="/crabsmedia-logo-white.png" alt="CrabsMedia" className="brand-logo" width="126" height="34" />
+        </div>
+        <div className="brand-product">
+          <div className="brand-mark" style={{ width: 30, height: 30, borderRadius: 9 }}><LineChart size={16} /></div>
+          <div>SEO Panel<span>Organik büyüme</span></div>
         </div>
         <div className="nav-section">Panel</div>
         <nav style={{ display: 'grid', gap: 2 }}>

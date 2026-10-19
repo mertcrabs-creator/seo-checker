@@ -6,7 +6,7 @@ import { alertApi } from '../api/endpoints';
 import { fmt } from '../utils/format';
 import { SeverityBadge } from './ui/Feedback';
 
-const TAB = { traffic_drop: '', rank_drop: 'keywords', new_critical_issues: 'health', site_down: 'health', indexing_blocked: 'health', ssl_expiry: 'health', backlinks_lost: 'backlinks' };
+const TAB = { traffic_drop: '', rank_drop: 'keywords', new_critical_issues: 'health', site_down: 'health', indexing_blocked: 'health', ssl_expiry: 'health', backlinks_lost: 'backlinks', page_change_critical: 'changes', page_change_warning: 'changes', competitor_changes: 'insights?view=competitors' };
 
 /** Üst bardaki bildirimler: otomatik izlemenin ürettiği uyarılar (2 dakikada bir yenilenir). */
 export default function AlertBell() {

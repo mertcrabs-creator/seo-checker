@@ -371,6 +371,24 @@ export const ISSUES = {
     description: 'JSON-LD bloğu ayrıştırılamıyor; Google bu yapısal veriyi yok sayar.',
     fix: 'JSON sözdizimini düzeltin ve Google Zengin Sonuçlar Testi ile doğrulayın.',
   },
+  schema_errors: {
+    severity: 'warning', category: 'structured',
+    title: 'Yapısal veride zorunlu alan hatası',
+    description: 'JSON-LD geçerli ama Google’ın bu tür için zorunlu tuttuğu alanlar eksik veya hatalı; sayfa zengin sonuç için uygun sayılmaz.',
+    fix: 'Belirtilen alanları ekleyin/düzeltin (ör. Product için offers.price + priceCurrency, BreadcrumbList için position + name + item) ve Zengin Sonuçlar Testi ile doğrulayın.',
+  },
+  schema_warnings: {
+    severity: 'notice', category: 'structured',
+    title: 'Yapısal veride önerilen alanlar eksik',
+    description: 'Zorunlu olmayan ama zengin sonucun görünme olasılığını ve kalitesini artıran alanlar eksik.',
+    fix: 'Önerilen alanları (image, author, dateModified, availability, sku vb.) mümkün olduğunca doldurun.',
+  },
+  schema_opportunity: {
+    severity: 'notice', category: 'structured',
+    title: 'İçerik yapısal veriye uygun ama işaretlenmemiş',
+    description: 'Sayfada makale, ürün, SSS, breadcrumb veya video içeriği tespit edildi ama ilgili Schema.org türü yok.',
+    fix: 'Tespit edilen tür için JSON-LD ekleyin (Article, Product, FAQPage, BreadcrumbList, VideoObject). Not: SSS zengin sonuçları Google’da yalnızca otoriter sağlık/kamu sitelerinde gösterilir.',
+  },
 };
 
 const WEIGHTS = { critical: 10, warning: 4, notice: 1 };

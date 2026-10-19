@@ -46,3 +46,7 @@ export const pagespeedQueue = new JobQueue('pagespeed', 3);
 export const rankQueue = new JobQueue('rankings', 3);
 export const backlinkQueue = new JobQueue('backlinks', 1);
 export const indexQueue = new JobQueue('index', 1);
+export const monitorQueue = new JobQueue('monitor', 2);
+export const competitorQueue = new JobQueue('competitors', 1);
+export const serpQueue = new JobQueue('serp-tracking', 1);
+export const briefQueue = new JobQueue('briefs', 1);

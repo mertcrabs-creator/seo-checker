@@ -106,6 +106,43 @@ export const authorityApi = {
   compute: (domainId) => data(http.post(`/domains/${id(domainId)}/authority/compute`, null, { timeout: 120_000 })),
 };
 
+/** Analiz derinleştirme: değişiklik takibi, içerik erimesi, CTR anomalisi, kümeler, iç linkler, yapısal veri, rakipler, loglar */
+export const insightApi = {
+  changes: (domainId, params) => data(http.get(`/domains/${id(domainId)}/insights/changes`, { params })),
+  watch: (domainId) => data(http.get(`/domains/${id(domainId)}/insights/changes/watch`)),
+  checkNow: (domainId) => data(http.post(`/domains/${id(domainId)}/insights/changes/check`)),
+  decay: (domainId) => data(http.get(`/domains/${id(domainId)}/insights/decay`)),
+  decayQueries: (domainId, params) => data(http.get(`/domains/${id(domainId)}/insights/decay/queries`, { params, timeout: 90_000 })),
+  ctr: (domainId) => data(http.get(`/domains/${id(domainId)}/insights/ctr`)),
+  clusters: (domainId) => data(http.get(`/domains/${id(domainId)}/insights/clusters`)),
+  links: (domainId) => data(http.get(`/domains/${id(domainId)}/insights/links`)),
+  schema: (domainId) => data(http.get(`/domains/${id(domainId)}/insights/schema`)),
+  annotations: (domainId, params) => data(http.get(`/domains/${id(domainId)}/insights/annotations`, { params })),
+  addAnnotation: (domainId, body) => data(http.post(`/domains/${id(domainId)}/insights/annotations`, body)),
+  removeAnnotation: (domainId, annotationId) => data(http.delete(`/domains/${id(domainId)}/insights/annotations/${id(annotationId)}`)),
+  competitors: (domainId) => data(http.get(`/domains/${id(domainId)}/insights/competitors`)),
+  addCompetitor: (domainId, hostname) => data(http.post(`/domains/${id(domainId)}/insights/competitors`, { hostname })),
+  recrawlCompetitor: (domainId, competitorId) => data(http.post(`/domains/${id(domainId)}/insights/competitors/${id(competitorId)}/crawl`)),
+  removeCompetitor: (domainId, competitorId) => data(http.delete(`/domains/${id(domainId)}/insights/competitors/${id(competitorId)}`)),
+  verifyLogIps: (domainId, ips) => data(http.post(`/domains/${id(domainId)}/insights/logs/verify`, { ips }, { timeout: 60_000 })),
+  saveLog: (domainId, summary) => data(http.post(`/domains/${id(domainId)}/insights/logs`, summary, { timeout: 60_000 })),
+  logs: (domainId, params) => data(http.get(`/domains/${id(domainId)}/insights/logs`, { params })),
+  competitorChanges: (domainId, params) => data(http.get(`/domains/${id(domainId)}/insights/competitors/changes`, { params })),
+  competitorIntel: (domainId) => data(http.get(`/domains/${id(domainId)}/insights/competitors/intel`, { timeout: 90_000 })),
+  crux: (domainId) => data(http.get(`/domains/${id(domainId)}/insights/crux`, { timeout: 60_000 })),
+  serp: (domainId) => data(http.get(`/domains/${id(domainId)}/insights/serp`)),
+  serpSuggestions: (domainId) => data(http.get(`/domains/${id(domainId)}/insights/serp/suggestions`)),
+  addSerpKeywords: (domainId, items) => data(http.post(`/domains/${id(domainId)}/insights/serp/keywords`, { items })),
+  removeSerpKeyword: (domainId, trackId) => data(http.delete(`/domains/${id(domainId)}/insights/serp/keywords/${id(trackId)}`)),
+  checkSerp: (domainId) => data(http.post(`/domains/${id(domainId)}/insights/serp/check`)),
+  ideas: (domainId) => data(http.get(`/domains/${id(domainId)}/insights/ideas`, { timeout: 90_000 })),
+  briefs: (domainId) => data(http.get(`/domains/${id(domainId)}/insights/briefs`)),
+  createBrief: (domainId, body) => data(http.post(`/domains/${id(domainId)}/insights/briefs`, body)),
+  brief: (domainId, briefId) => data(http.get(`/domains/${id(domainId)}/insights/briefs/${id(briefId)}`)),
+  removeBrief: (domainId, briefId) => data(http.delete(`/domains/${id(domainId)}/insights/briefs/${id(briefId)}`)),
+  removeLog: (domainId, logId) => data(http.delete(`/domains/${id(domainId)}/insights/logs/${id(logId)}`)),
+};
+
 export const keywordApi = {
   list: (params) => data(http.get('/keywords', { params })),
   overview: (params) => data(http.get('/keywords/overview', { params })),
