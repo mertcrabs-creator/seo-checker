@@ -1,4 +1,4 @@
-import { Binary, Bot, Boxes, FileClock, Lightbulb, Link2, MousePointerClick, Sparkles, Swords, TrendingDown } from 'lucide-react';
+import { ArrowDownRight, Binary, Bot, Boxes, BrainCircuit, FileClock, Lightbulb, Link2, MousePointerClick, Sparkles, Swords, TrendingDown } from 'lucide-react';
 import { lazy, Suspense } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import ErrorBoundary from '../../../components/ErrorBoundary';
@@ -7,6 +7,8 @@ import { Skeleton } from '../../../components/ui/Feedback';
 const VIEWS = [
   { key: 'ideas', label: 'İçerik fikirleri', icon: Lightbulb, Comp: lazy(() => import('./IdeasView')) },
   { key: 'briefs', label: 'İçerik brief', icon: Sparkles, Comp: lazy(() => import('./BriefsView')) },
+  { key: 'rankdrops', label: 'Sıralama kayıpları', icon: ArrowDownRight, gsc: true, Comp: lazy(() => import('./RankDropsView')) },
+  { key: 'geo', label: 'GEO / AI arama', icon: BrainCircuit, Comp: lazy(() => import('./GeoView')) },
   { key: 'serp', label: 'SERP & AI Overview', icon: Bot, Comp: lazy(() => import('./SerpView')) },
   { key: 'decay', label: 'İçerik erimesi', icon: TrendingDown, gsc: true, Comp: lazy(() => import('./DecayView')) },
   { key: 'ctr', label: 'CTR anomalisi', icon: MousePointerClick, gsc: true, Comp: lazy(() => import('./CtrView')) },
@@ -36,7 +38,7 @@ export default function InsightsTab({ domain }) {
         ))}
       </div>
       {!domain.gsc_property && (
-        <p className="hint">İçerik erimesi ve CTR anomalisi Search Console verisi gerektirir; diğer analizler site taramasıyla çalışır.</p>
+        <p className="hint">Sıralama kayıpları, içerik erimesi ve CTR anomalisi Search Console verisi gerektirir; diğer analizler site taramasıyla çalışır.</p>
       )}
       <Suspense fallback={<Skeleton height={320} />}>
         <ErrorBoundary key={active.key}>

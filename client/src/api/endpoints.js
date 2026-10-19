@@ -141,6 +141,15 @@ export const insightApi = {
   brief: (domainId, briefId) => data(http.get(`/domains/${id(domainId)}/insights/briefs/${id(briefId)}`)),
   removeBrief: (domainId, briefId) => data(http.delete(`/domains/${id(domainId)}/insights/briefs/${id(briefId)}`)),
   removeLog: (domainId, logId) => data(http.delete(`/domains/${id(domainId)}/insights/logs/${id(logId)}`)),
+  geo: (domainId) => data(http.get(`/domains/${id(domainId)}/insights/geo`, { timeout: 90_000 })),
+  schemaPlan: (domainId) => data(http.get(`/domains/${id(domainId)}/insights/schema/plan`)),
+  setSector: (domainId, businessType) => data(http.put(`/domains/${id(domainId)}/insights/schema/sector`, { businessType })),
+  generateSchema: (domainId, body) => data(http.post(`/domains/${id(domainId)}/insights/schema/generate`, body, { timeout: 60_000 })),
+  rankDrops: (domainId) => data(http.get(`/domains/${id(domainId)}/insights/rank-drops`)),
+  rankDropAnalyses: (domainId) => data(http.get(`/domains/${id(domainId)}/insights/rank-drops/analyses`)),
+  createRankDropAnalysis: (domainId, body) => data(http.post(`/domains/${id(domainId)}/insights/rank-drops/analyses`, body)),
+  rankDropAnalysis: (domainId, analysisId) => data(http.get(`/domains/${id(domainId)}/insights/rank-drops/analyses/${id(analysisId)}`)),
+  removeRankDropAnalysis: (domainId, analysisId) => data(http.delete(`/domains/${id(domainId)}/insights/rank-drops/analyses/${id(analysisId)}`)),
 };
 
 export const keywordApi = {

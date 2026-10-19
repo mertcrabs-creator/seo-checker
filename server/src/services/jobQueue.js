@@ -50,3 +50,4 @@ export const monitorQueue = new JobQueue('monitor', 2);
 export const competitorQueue = new JobQueue('competitors', 1);
 export const serpQueue = new JobQueue('serp-tracking', 1);
 export const briefQueue = new JobQueue('briefs', 1);
+export const rankDropQueue = new JobQueue('rank-drop', 1);

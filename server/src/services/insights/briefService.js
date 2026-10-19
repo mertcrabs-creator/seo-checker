@@ -53,7 +53,7 @@ const jaccard = (a, b) => {
 const EXTRA_STOP = new Set(`le la les de des du un une et en est pour par sur au aux avec dans que qui ce cette vous nous der die das und ist mit von zu den dem ein eine für auf im nicht sie el los las del y con por para una que es se lo al il di che per non sono gli della dei nel una`.split(' '));
 const isStop = (t) => STOPWORDS.has(t) || EXTRA_STOP.has(t);
 
-function tokenizer(lang) {
+export function tokenizer(lang) {
   const lower = lowerFor(lang);
   const stem = stemmer(lang);
   return (text) => new Set((lower(text).match(/[\p{L}\p{N}]+/gu) || []).filter((t) => t.length >= 2 && !isStop(t) && !/^\d+$/.test(t)).map(stem));
@@ -80,7 +80,7 @@ export function guessLanguage(keyword) {
 }
 
 // ------------------------------------------------------------------ Sayfa analizi
-async function analyzeUrl(url, ownHost) {
+export async function analyzeUrl(url, ownHost) {
   try {
     const res = await safeFetch(url, { timeoutMs: 15_000, maxBytes: 3 * 1024 * 1024 });
     if (res.status !== 200 || !/text\/html|application\/xhtml/i.test(String(res.headers['content-type'] || ''))) return { url, error: `HTTP ${res.status}` };
@@ -103,6 +103,13 @@ async function analyzeUrl(url, ownHost) {
       externalLinks: d.externalLinks,
       publishedAt: d.publishedAt,
       modifiedAt: d.modifiedAt,
+      // Sıralama kaybı analizi için indekslenebilirlik ve GEO sinyalleri
+      noindex: d.noindex,
+      canonical: d.canonical,
+      issues: a.issues.map((i) => i.code),
+      geo: d.geo,
+      internalLinks: d.internalLinks,
+      ttfb: res.ttfb,
       // Terim kapsamı için sayfa başına daha geniş (60) ifade listesi
       keywords: extractKeywords({
         title: d.title, h1: d.h1, headings: a.content.outline.filter((h) => h.level > 1).map((h) => h.text), meta: d.metaDescription,
@@ -115,7 +122,7 @@ async function analyzeUrl(url, ownHost) {
   }
 }
 
-async function analyzeAll(urls, ownHost) {
+export async function analyzeAll(urls, ownHost) {
   const out = [];
   let i = 0;
   await Promise.all(Array.from({ length: FETCH_CONCURRENCY }, async () => {
@@ -129,7 +136,7 @@ async function analyzeAll(urls, ownHost) {
 
 // ------------------------------------------------------------------ Veri toplama
 /** Hedef ülke: kelimenin dilinin konuşulduğu ve en çok gösterim aldığı ülke (ör. İngilizce kelime için Fransa değil ABD/İngiltere). */
-async function targetCountry(domain, keyword) {
+export async function targetCountry(domain, keyword) {
   const langs = guessLanguage(keyword);
   const speaks = (c) => countryLanguages(c).some((l) => langs.includes(l));
   const { rows } = await query(
@@ -148,7 +155,7 @@ async function targetCountry(domain, keyword) {
 }
 
 /** Kelimeyle kök paylaşan Search Console sorguları ve sıralanan sayfalar. */
-async function relatedQueries(domain, keyword, tok) {
+export async function relatedQueries(domain, keyword, tok) {
   if (!domain.gsc_property) return { queries: [], ourPage: null };
   const core = tok(keyword);
   const { rows } = await query(
@@ -179,7 +186,7 @@ async function relatedQueries(domain, keyword, tok) {
 }
 
 /** SerpApi yoksa: rakiplerin bu konuyu hedefleyen sayfaları. */
-async function competitorCandidates(domain, keyword, tok) {
+export async function competitorCandidates(domain, keyword, tok) {
   const core = tok(keyword);
   const { rows } = await query(
     `SELECT k.url, k.keyword, k.score FROM competitor_keywords k JOIN competitors c ON c.id = k.competitor_id
@@ -196,7 +203,7 @@ async function competitorCandidates(domain, keyword, tok) {
   return [...best.entries()].sort((a, b) => b[1] - a[1]).slice(0, MAX_PAGES).map(([u]) => u);
 }
 
-async function internalLinks(domain, keyword, tok, excludeUrl) {
+export async function internalLinks(domain, keyword, tok, excludeUrl) {
   const { rows: [audit] } = await query(`SELECT id FROM audits WHERE domain_id = $1 AND status = 'completed' ORDER BY created_at DESC LIMIT 1`, [domain.id]);
   if (!audit) return [];
   const core = tok(keyword);
@@ -219,7 +226,7 @@ async function internalLinks(domain, keyword, tok, excludeUrl) {
 }
 
 // ------------------------------------------------------------------ Sentez
-function headingGroups(pages, tok, ours) {
+export function headingGroups(pages, tok, ours) {
   const groups = [];
   for (const p of pages) {
     const seen = new Set();
@@ -253,7 +260,7 @@ function headingGroups(pages, tok, ours) {
     .slice(0, 30);
 }
 
-function termCoverage(pages, ours, lang, keyword, tok) {
+export function termCoverage(pages, ours, lang, keyword, tok) {
   const core = tok(keyword);
   const df = new Map();
   for (const p of pages) {
@@ -278,7 +285,7 @@ function termCoverage(pages, ours, lang, keyword, tok) {
     .map((e) => ({ term: e.term, pages: e.pages, covered: ours ? phraseCount(ours.bodyText, e.term, lang) > 0 : null }));
 }
 
-function titleModifiers(pages, keyword, tok, brands) {
+export function titleModifiers(pages, keyword, tok, brands) {
   const core = tok(keyword);
   const counts = new Map();
   for (const p of pages) {
@@ -314,7 +321,7 @@ function titleIdeas(keyword, intent, modifiers, lang) {
   return (ideas[intent] || ideas.informational).map((t) => ({ title: t, length: t.length }));
 }
 
-function questionList(serpQuestions, gscQueries, variations, ours, tok) {
+export function questionList(serpQuestions, gscQueries, variations, ours, tok) {
   const out = new Map();
   const add = (q, source) => {
     const k = q.toLowerCase().replace(/[?!.]+$/, '').trim();

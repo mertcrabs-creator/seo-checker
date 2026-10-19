@@ -33,7 +33,7 @@ async function loadDomain(req, _res, next) {
   const { rows } = await query(
     `SELECT id, hostname, gsc_property, sync_status, sync_error, last_synced_at, created_at,
             rank_languages, rank_locations, rank_status, rank_error, rank_updated_at,
-            backlink_status, backlink_error, backlink_updated_at, index_status, index_error, index_updated_at, ssl_expires_at
+            backlink_status, backlink_error, backlink_updated_at, index_status, index_error, index_updated_at, ssl_expires_at, business_type
        FROM domains WHERE id = $1 AND user_id = $2`,
     [req.valid.params.id, req.user.id],
   );

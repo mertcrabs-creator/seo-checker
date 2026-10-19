@@ -339,3 +339,17 @@ export const logSummarySchema = z.object({
   fake: z.array(z.object({ ip: ipText, bot: botFamily, hits: count })).max(200),
   ai: z.array(z.object({ bot: z.string().max(40), hits: count, urls: count, topPaths: z.array(z.object({ path: logPath, hits: count })).max(10) })).max(30),
 });
+
+// ------------------------------------------------------------------ GEO / şema oluşturucu / sıralama kaybı
+export const schemaGenerateSchema = z.object({
+  url: z.string().trim().url('Geçerli bir URL girin').max(2000),
+  pageType: z.string().trim().max(30).optional(),
+  sector: z.string().trim().max(30).optional(),
+});
+export const schemaSectorSchema = z.object({ businessType: z.string().trim().max(30).nullable() });
+export const rankDropAnalysisSchema = z.object({
+  keyword: z.string().trim().min(1, 'Kelime girin').max(200),
+  country: alpha3.optional(),
+  urls: z.array(z.string().trim().url().max(2000)).max(6).default([]),
+});
+export const rankDropIdParam = z.object({ analysisId: z.string().uuid() });

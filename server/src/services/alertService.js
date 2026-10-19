@@ -3,6 +3,7 @@ import tls from 'node:tls';
 import { config } from '../config.js';
 import { query } from '../db/pool.js';
 import { ISSUES } from './audit/issueCatalog.js';
+import { autoAnalyze } from './insights/rankDropService.js';
 import { isBlockedIp } from '../utils/safeFetch.js';
 
 /**
@@ -83,12 +84,14 @@ export const afterSync = safe(async (domainId) => {
     [domainId],
   );
   if (drops.length) {
-    await createAlert({
-      domainId, type: 'rank_drop', severity: 'warning',
+    const alert = await createAlert({
+      domainId, type: 'rank_drop', severity: drops.some((d) => d.prev <= 3 && d.cur > 10) ? 'critical' : 'warning',
       title: `${drops.length} önemli kelimede sıra kaybı`,
-      detail: drops.slice(0, 5).map((d) => `“${d.query}”: ${d.prev} → ${d.cur}`).join('\n'),
+      detail: `${drops.slice(0, 5).map((d) => `“${d.query}”: ${d.prev} → ${d.cur}`).join('\n')}\nEn önemli ${Math.min(3, drops.length)} kelime için rakip ve sayfa analizi hazırlanıyor: Derin analiz → Sıralama kayıpları.`,
       data: { keywords: drops },
     });
+    // Uyarı yeni üretildiyse (tekilleştirmeye takılmadıysa) en önemli düşüşleri otomatik analiz et
+    if (alert) await autoAnalyze(domainId, drops.map((d) => d.query));
   }
 });
 

@@ -28,12 +28,15 @@ export function parseRobots(text, agent = 'crseobot') {
     }
   }
 
-  const group = groups.find((g) => g.agents.some((a) => a !== '*' && agent.includes(a))) || groups.find((g) => g.agents.includes('*'));
+  // Tam eşleşen grup önceliklidir (ör. "applebot-extended" grubu "applebot" grubundan önce)
+  const named = groups.find((g) => g.agents.includes(agent)) || groups.find((g) => g.agents.some((a) => a !== '*' && agent.includes(a)));
+  const group = named || groups.find((g) => g.agents.includes('*'));
   const rules = group?.rules || [];
   return {
     sitemaps,
     rules,
     blocksAll: !isAllowed(rules, '/'),
+    explicit: Boolean(named),
   };
 }
 

@@ -104,6 +104,8 @@ model Domain {
   indexUpdatedAt    DateTime? @map("index_updated_at") @db.Timestamptz(6)
   sslExpiresAt      DateTime? @map("ssl_expires_at") @db.Timestamptz(6)
   monitorCheckedAt  DateTime? @map("monitor_checked_at") @db.Timestamptz(6)
+  /// Şema oluşturucu için kullanıcının seçtiği sektör (boş = otomatik tespit)
+  businessType      String?   @map("business_type")
 
   user                 User                   @relation(fields: [userId], references: [id], onDelete: Cascade, onUpdate: NoAction)
   rankSnapshots        RankSnapshot[]
@@ -133,6 +135,7 @@ model Domain {
   serpSnapshots        SerpSnapshot[]
   sitemapUrls          DomainSitemapUrl[]
   contentBriefs        ContentBrief[]
+  rankDropAnalyses     RankDropAnalysis[]
 
   @@unique([userId, hostname])
   @@map("domains")
@@ -442,6 +445,8 @@ model AuditPage {
   outline         Json?    @db.JsonB
   publishedAt     DateTime? @map("published_at") @db.Date
   modifiedAt      DateTime? @map("modified_at") @db.Date
+  /// GEO (yapay zekâ aramaları) sinyalleri: soru başlıkları, kısa yanıtlar, liste/tablo, veri, kaynak, yazar
+  geo             Json?    @db.JsonB
 
   audit Audit @relation(fields: [auditId], references: [id], onDelete: Cascade, onUpdate: NoAction)
 
@@ -851,4 +856,25 @@ model ContentBrief {
 
   @@index([domainId, createdAt(sort: Desc)], map: "content_briefs_domain_idx")
   @@map("content_briefs")
+}
+
+/// Sıralama kaybı analizi: düşen kelime için sayfa + rakip + zaman çizelgesi karşılaştırması ve öneriler
+model RankDropAnalysis {
+  id         String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  domainId   String    @map("domain_id") @db.Uuid
+  keyword    String
+  country    String?
+  page       String?
+  /// manual | alert
+  trigger    String    @default("manual")
+  status     String    @default("queued")
+  error      String?
+  data       Json?     @db.JsonB
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  finishedAt DateTime? @map("finished_at") @db.Timestamptz(6)
+
+  domain Domain @relation(fields: [domainId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([domainId, createdAt(sort: Desc)], map: "rank_drop_analyses_domain_idx")
+  @@map("rank_drop_analyses")
 }

@@ -10,6 +10,9 @@ import { contentDecay, decayPageQueries } from '../services/insights/decayServic
 import { linkSuggestions } from '../services/insights/linkSuggestionService.js';
 import * as logs from '../services/insights/logService.js';
 import { schemaReport } from '../services/insights/schemaReportService.js';
+import { geoReport } from '../services/insights/geoService.js';
+import { generateSchema, schemaPlan, setSector } from '../services/insights/schemaGenerator.js';
+import * as rankDrops from '../services/insights/rankDropService.js';
 import { monitorQueue, serpQueue } from '../services/jobQueue.js';
 import * as briefs from '../services/insights/briefService.js';
 import { contentIdeas } from '../services/insights/contentIdeasService.js';
@@ -20,6 +23,7 @@ import { badRequest, conflict, notFound } from '../utils/httpError.js';
 import {
   annotationIdParam, annotationRangeQuery, annotationSchema, changesQuery, competitorIdParam, competitorSchema, decayPageQuery,
   logIdParam, logLatestQuery, logSummarySchema, logVerifySchema, briefIdParam, briefSchema, competitorChangesQuery, serpTrackIdParam, serpTrackSchema,
+  rankDropAnalysisSchema, rankDropIdParam, schemaGenerateSchema, schemaSectorSchema,
 } from '../validation/schemas.js';
 
 /** /api/domains/:id/insights — alan adı sahipliği üst router'da (loadDomain) doğrulanır. */
@@ -65,6 +69,46 @@ router.get('/links', async (req, res) => {
 
 router.get('/schema', async (req, res) => {
   res.json(await schemaReport(req.domain));
+});
+
+// ------------------------------------------------------------------ Şema oluşturucu (sektör + sayfa türü)
+router.get('/schema/plan', async (req, res) => {
+  res.json(await schemaPlan(req.domain));
+});
+
+router.put('/schema/sector', validate({ body: schemaSectorSchema }), async (req, res) => {
+  res.json(await setSector(req.domain, req.valid.body.businessType));
+});
+
+router.post('/schema/generate', heavyJobLimiter, validate({ body: schemaGenerateSchema }), async (req, res) => {
+  res.json(await generateSchema(req.domain, req.valid.body));
+});
+
+// ------------------------------------------------------------------ GEO (yapay zekâ aramaları)
+router.get('/geo', async (req, res) => {
+  res.json(await geoReport(req.domain));
+});
+
+// ------------------------------------------------------------------ Sıralama kayıpları
+router.get('/rank-drops', requireGsc, async (req, res) => {
+  res.json(await rankDrops.rankDrops(req.domain));
+});
+
+router.get('/rank-drops/analyses', async (req, res) => {
+  res.json({ analyses: await rankDrops.listAnalyses(req.domain) });
+});
+
+router.post('/rank-drops/analyses', heavyJobLimiter, requireGsc, validate({ body: rankDropAnalysisSchema }), async (req, res) => {
+  res.status(202).json({ analysis: await rankDrops.createAnalysis(req.domain, req.user.id, req.valid.body) });
+});
+
+router.get('/rank-drops/analyses/:analysisId', validate({ params: rankDropIdParam }), async (req, res) => {
+  res.json({ analysis: await rankDrops.getAnalysis(req.domain, req.valid.params.analysisId) });
+});
+
+router.delete('/rank-drops/analyses/:analysisId', validate({ params: rankDropIdParam }), async (req, res) => {
+  await rankDrops.deleteAnalysis(req.domain, req.valid.params.analysisId);
+  res.status(204).end();
 });
 
 // ------------------------------------------------------------------ Grafik notları

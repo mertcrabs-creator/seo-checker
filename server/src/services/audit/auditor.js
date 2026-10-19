@@ -345,11 +345,11 @@ export async function runAudit(auditId, domainId, hostname) {
         [
           'audit_id', 'url', 'status_code', 'load_ms', 'bytes', 'title', 'meta_description', 'h1', 'word_count', 'depth', 'issue_count',
           'canonical', 'noindex', 'lang', 'h2_count', 'internal_links', 'external_links', 'inlinks', 'images', 'images_no_alt',
-          'schema_types', 'in_sitemap', 'onpage_score', 'primary_keyword', 'schema_report', 'outline', 'published_at', 'modified_at',
+          'schema_types', 'in_sitemap', 'onpage_score', 'primary_keyword', 'schema_report', 'outline', 'published_at', 'modified_at', 'geo',
         ],
         [
           'uuid', 'text', 'int', 'int', 'int', 'text', 'text', 'text', 'int', 'int', 'int',
-          'text', 'bool', 'text', 'int', 'int', 'int', 'int', 'int', 'int', 'text[]', 'bool', 'int', 'text', 'jsonb', 'jsonb', 'date', 'date',
+          'text', 'bool', 'text', 'int', 'int', 'int', 'int', 'int', 'int', 'text[]', 'bool', 'int', 'text', 'jsonb', 'jsonb', 'date', 'date', 'jsonb',
         ],
         pages.map(({ record: r, issues }) => [
           auditId, r.url, r.statusCode ?? null, r.loadMs ?? null, r.bytes ?? null,
@@ -358,7 +358,7 @@ export async function runAudit(auditId, domainId, hostname) {
           r.canonical ?? null, Boolean(r.noindex), r.lang ?? null, r.h2Count ?? null, r.internalLinks ?? null, r.externalLinks ?? null,
           r.inlinks ?? 0, r.images ?? null, r.imagesNoAlt ?? null, r.schemaTypes ?? [], Boolean(r.inSitemap), r.onpageScore ?? null,
           r.primaryKeyword ?? null, r.schemaReport ? JSON.stringify(r.schemaReport) : null,
-          r.outline?.length ? JSON.stringify(r.outline) : null, r.publishedAt ?? null, r.modifiedAt ?? null,
+          r.outline?.length ? JSON.stringify(r.outline) : null, r.publishedAt ?? null, r.modifiedAt ?? null, r.geo ? JSON.stringify(r.geo) : null,
         ]),
       );
       // İç bağlantı grafiği: sadece taranan sayfalar arası kenarlar (iç link önerileri ve anchor analizi)

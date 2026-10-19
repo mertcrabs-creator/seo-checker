@@ -8,6 +8,7 @@ import { useToast } from '../../../components/ui/Toast';
 import { fmt, safeHref, shortUrl } from '../../../utils/format';
 import { NoAuditState } from '../site/shared';
 import { PageLink, RecrawlState, Tiles, Tip } from './common';
+import SchemaBuilder from './SchemaBuilder';
 
 const richTest = (url) => `https://search.google.com/test/rich-results?url=${encodeURIComponent(url)}`;
 const HINT_INFO = {
@@ -80,10 +81,12 @@ export default function SchemaView({ domain }) {
       {data.site.map((x) => tpl[x.code] && (
         <div key={x.code} className="card card-pad" style={{ display: 'grid', gap: 10 }}>
           <div className="row" style={{ gap: 8 }}><TriangleAlert size={17} style={{ color: 'var(--warning-ink)' }} /><h3>{tpl[x.code].title}</h3>{x.pages && <span className="badge badge-neutral">{x.pages}/{x.total} sayfa</span>}</div>
-          <p className="text-2" style={{ fontSize: 13 }}>{tpl[x.code].text} Örnek (kendi bilgilerinizle düzenleyin):</p>
+          <p className="text-2" style={{ fontSize: 13 }}>{tpl[x.code].text} Aşağıdaki şema oluşturucu, sitenizdeki gerçek bilgilerle doldurulmuş kodu üretir. Genel örnek:</p>
           <CodeBlock code={tpl[x.code].code} />
         </div>
       ))}
+
+      <SchemaBuilder domain={domain} />
 
       <div className="grid grid-2">
         <div className="card">
