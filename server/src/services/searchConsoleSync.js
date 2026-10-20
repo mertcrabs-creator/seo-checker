@@ -93,22 +93,28 @@ export async function syncDomain(domainId, userId) {
       queryCountry.map((r) => [domainId, r.keys[0], r.keys[1], r.keys[2].toUpperCase(), ...metrics(r)]),
     );
 
-    // Sıralamalar sekmesi için son 28 gün / önceki 28 gün özeti (verideki son güne göre; GSC 2-3 gün gecikmeli)
+    // Sıralamalar sekmesi için son 28 gün / önceki 28 gün özeti (verideki son güne göre; GSC 2-3 gün gecikmeli).
+    // Tek geçişte FILTER ile toplanır: aynı işlemde yeni yazılan satırlar için planlayıcı istatistiği olmadığından
+    // cur/prev JOIN'i iç içe döngüye düşüp yüz binlerce satırda dakikalarca takılıyordu.
     await client.query('DELETE FROM gsc_query_country WHERE domain_id = $1', [domainId]);
     await client.query(
       `WITH b AS (SELECT max(date) AS e FROM gsc_query_country_daily WHERE domain_id = $1),
-       cur AS (
-         SELECT query, country, SUM(clicks)::int AS clicks, SUM(impressions)::int AS impressions,
-                SUM(position * impressions) / NULLIF(SUM(impressions), 0) AS position
-           FROM gsc_query_country_daily, b WHERE domain_id = $1 AND date > b.e - 28 GROUP BY query, country
-       ), prev AS (
-         SELECT query, country, SUM(clicks)::int AS clicks, SUM(impressions)::int AS impressions,
-                SUM(position * impressions) / NULLIF(SUM(impressions), 0) AS position
-           FROM gsc_query_country_daily, b WHERE domain_id = $1 AND date > b.e - 56 AND date <= b.e - 28 GROUP BY query, country
+       agg AS (
+         SELECT query, country,
+                SUM(clicks) FILTER (WHERE date > b.e - 28)::int AS clicks,
+                SUM(impressions) FILTER (WHERE date > b.e - 28)::int AS impressions,
+                SUM(position * impressions) FILTER (WHERE date > b.e - 28)
+                  / NULLIF(SUM(impressions) FILTER (WHERE date > b.e - 28), 0) AS position,
+                SUM(clicks) FILTER (WHERE date <= b.e - 28)::int AS prev_clicks,
+                SUM(impressions) FILTER (WHERE date <= b.e - 28)::int AS prev_impressions,
+                SUM(position * impressions) FILTER (WHERE date <= b.e - 28)
+                  / NULLIF(SUM(impressions) FILTER (WHERE date <= b.e - 28), 0) AS prev_position,
+                bool_or(date > b.e - 28) AS in_cur
+           FROM gsc_query_country_daily, b WHERE domain_id = $1 AND date > b.e - 56 GROUP BY query, country
        )
        INSERT INTO gsc_query_country (domain_id, query, country, clicks, impressions, position, prev_clicks, prev_impressions, prev_position)
-       SELECT $1, c.query, c.country, c.clicks, c.impressions, COALESCE(c.position, 0), p.clicks, p.impressions, p.position
-         FROM cur c LEFT JOIN prev p USING (query, country)`,
+       SELECT $1, query, country, clicks, impressions, COALESCE(position, 0), prev_clicks, prev_impressions, prev_position
+         FROM agg WHERE in_cur`,
       [domainId],
     );
 

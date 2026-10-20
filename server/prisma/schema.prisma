@@ -142,6 +142,8 @@ model Domain {
   contentBriefs        ContentBrief[]
   rankDropAnalyses     RankDropAnalysis[]
   members              DomainMember[]
+  trackingSite         TrackingSite?
+  trackingSessions     TrackingSession[]
 
   @@unique([userId, hostname])
   @@map("domains")
@@ -897,4 +899,98 @@ model DomainMember {
   @@id([domainId, userId])
   @@index([userId], map: "domain_members_user_idx")
   @@map("domain_members")
+}
+
+// ---------------------------------------------------------------- Ziyaretçi takibi (CrabRank script)
+/// Alan adının takip kodu. site_key herkese açıktır (sitenin HTML'inde durur); güvenlik Origin/alan adı kontrolüyle sağlanır.
+/// Anahtar yenilenince eski anahtar previous_key_expires_at'e kadar çalışmaya devam eder.
+model TrackingSite {
+  domainId             String    @id @map("domain_id") @db.Uuid
+  siteKey              String    @unique @map("site_key")
+  previousKey          String?   @unique @map("previous_key")
+  previousKeyExpiresAt DateTime? @map("previous_key_expires_at") @db.Timestamptz(6)
+  allowedHosts         String[]  @default([]) @map("allowed_hosts")
+  enabled              Boolean   @default(true)
+  lastEventAt          DateTime? @map("last_event_at") @db.Timestamptz(6)
+  rotatedAt            DateTime? @map("rotated_at") @db.Timestamptz(6)
+  createdAt            DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  domain Domain @relation(fields: [domainId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@map("tracking_sites")
+}
+
+/// Çerezsiz oturum: visitor_hash = HMAC(gün + alan adı + IP + user-agent), her gün değişir; ham IP saklanmaz.
+/// 30 dk hareketsizlikte yeni oturum başlar.
+model TrackingSession {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  domainId     String   @map("domain_id") @db.Uuid
+  visitorHash  String   @map("visitor_hash")
+  startedAt    DateTime @default(now()) @map("started_at") @db.Timestamptz(6)
+  lastSeenAt   DateTime @default(now()) @map("last_seen_at") @db.Timestamptz(6)
+  landingPath  String   @map("landing_path")
+  exitPath     String?  @map("exit_path")
+  /// organic | ai | paid | social | email | referral | direct (CHECK migration'da)
+  channel      String
+  source       String?
+  referrerHost String?  @map("referrer_host")
+  utmSource    String?  @map("utm_source")
+  utmMedium    String?  @map("utm_medium")
+  utmCampaign  String?  @map("utm_campaign")
+  utmTerm      String?  @map("utm_term")
+  country      String?
+  /// mobile | tablet | desktop (CHECK migration'da)
+  device       String
+  language     String?
+  pageviews    Int      @default(0)
+  engagedMs    Int      @default(0) @map("engaged_ms")
+  maxScroll    Int      @default(0) @map("max_scroll") @db.SmallInt
+  conversions  Int      @default(0)
+
+  domain         Domain               @relation(fields: [domainId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  pageviewRows   TrackingPageview[]
+  conversionRows TrackingConversion[]
+
+  @@index([domainId, startedAt], map: "tracking_sessions_domain_started_idx")
+  @@index([domainId, visitorHash, lastSeenAt], map: "tracking_sessions_visitor_idx")
+  @@map("tracking_sessions")
+}
+
+/// Sayfa görüntüleme (ham veri, varsayılan 30 gün tutulur). pv_id tarayıcıda üretilir; etkileşim ve Web Vitals sonradan güncellenir.
+model TrackingPageview {
+  domainId  String   @map("domain_id") @db.Uuid
+  pvId      String   @map("pv_id")
+  sessionId String   @map("session_id") @db.Uuid
+  path      String
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  engagedMs Int      @default(0) @map("engaged_ms")
+  maxScroll Int      @default(0) @map("max_scroll") @db.SmallInt
+  lcpMs     Int?     @map("lcp_ms")
+  cls       Float?   @db.Real
+  inpMs     Int?     @map("inp_ms")
+
+  session TrackingSession @relation(fields: [sessionId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@id([domainId, pvId])
+  @@index([sessionId], map: "tracking_pageviews_session_idx")
+  @@index([domainId, createdAt], map: "tracking_pageviews_domain_created_idx")
+  @@map("tracking_pageviews")
+}
+
+/// Dönüşüm: telefon / WhatsApp / e-posta tıklaması, form gönderimi veya crabrank('conversion', ad) çağrısı.
+model TrackingConversion {
+  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  domainId  String   @map("domain_id") @db.Uuid
+  sessionId String   @map("session_id") @db.Uuid
+  /// phone | whatsapp | email | form | custom (CHECK migration'da)
+  kind      String
+  name      String?
+  path      String?
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  session TrackingSession @relation(fields: [sessionId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([domainId, createdAt], map: "tracking_conversions_domain_created_idx")
+  @@index([sessionId], map: "tracking_conversions_session_idx")
+  @@map("tracking_conversions")
 }

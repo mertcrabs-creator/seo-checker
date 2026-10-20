@@ -10,6 +10,7 @@ import adminRoutes from './routes/admin.js';
 import alertRoutes from './routes/alerts.js';
 import analyzeRoutes from './routes/analyze.js';
 import authRoutes from './routes/auth.js';
+import collectRoutes from './routes/collect.js';
 import domainRoutes from './routes/domains.js';
 import integrationRoutes from './routes/integrations.js';
 import keywordRoutes from './routes/keywords.js';
@@ -19,6 +20,9 @@ export function createApp() {
   app.disable('x-powered-by');
   app.set('trust proxy', config.trustProxy);
   app.set('query parser', 'simple'); // dizi/nesne enjeksiyonu (qs) kapalı
+
+  // Müşteri sitelerindeki CrabRank script'i: kendi başlıkları, sınırı ve gövde ayrıştırıcısı var (panel CSP/CORS'u uygulanmaz)
+  app.use('/api/t', collectRoutes);
 
   app.use(
     helmet({

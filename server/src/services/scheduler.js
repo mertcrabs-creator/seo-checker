@@ -10,6 +10,7 @@ import { runRefresh as runBacklinks } from './backlinks/backlinkService.js';
 import { runInspection } from './indexService.js';
 import { auditQueue, backlinkQueue, competitorQueue, indexQueue, monitorQueue, serpQueue, syncQueue } from './jobQueue.js';
 import { runSync } from './searchConsoleSync.js';
+import { purgeOldTrackingData } from './tracking/trackingService.js';
 
 /**
  * Otomatik izleme: her 15 dakikada vadesi gelen işleri mevcut kuyruklara ekler (her turda sınırlı sayıda,
@@ -17,6 +18,7 @@ import { runSync } from './searchConsoleSync.js';
  */
 const TICK_MS = 15 * 60_000;
 const lastSsl = new Map();
+let lastTrackingPurge = 0;
 const run = (label, fn) => fn().catch((err) => console.warn(`[scheduler] ${label}`, err.message));
 
 async function tick() {
@@ -95,6 +97,12 @@ async function tick() {
 
   // SERP özellikleri / AI Overview: takip edilen kelimeler (varsayılan haftalık, SerpApi kotası korunarak)
   for (const d of await dueDomains(2)) if (!serpQueue.has(d.id)) serpQueue.add(d.id, () => runChecks(d));
+
+  // Ziyaretçi takibi saklama süresi: günlük
+  if (Date.now() - lastTrackingPurge > 24 * 3_600_000) {
+    lastTrackingPurge = Date.now();
+    await run('tracking-purge', purgeOldTrackingData);
+  }
 
   // SSL: günlük
   const { rows: all } = await query('SELECT id, hostname FROM domains');

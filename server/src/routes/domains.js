@@ -16,6 +16,7 @@ import * as insight from '../services/rankings/keywordInsightService.js';
 import backlinkRoutes from './backlinks.js';
 import insightRoutes from './insights.js';
 import rankingRoutes from './rankings.js';
+import trackingRoutes from './tracking.js';
 import { badRequest, conflict, notFound } from '../utils/httpError.js';
 import {
   auditIssueParams, countryCode, createDomainSchema, days, idParam, keywordInsightQuery, keywordTrendQuery, listQuery, serpCheckSchema,
@@ -343,6 +344,7 @@ router.get('/:id/opportunities/content-gaps', withDomain, requireGsc, async (req
 router.use('/:id/rankings', withDomain, rankingRoutes);
 router.use('/:id/backlinks', withDomain, backlinkRoutes);
 router.use('/:id/insights', withDomain, insightRoutes);
+router.use('/:id/tracking', withDomain, trackingRoutes);
 
 // ------------------------------------------------------------------ PageSpeed
 router.post('/:id/pagespeed', heavyJobLimiter, withDomain, validate({ body: pagespeedSchema }), async (req, res) => {

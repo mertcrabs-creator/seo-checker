@@ -7,6 +7,10 @@ export const METRICS = {
   impressions: { label: 'Gösterim', format: fmt.num, axis: fmt.compact },
   ctr: { label: 'TO (CTR)', format: fmt.pct, axis: (v) => `${(v * 100).toFixed(0)}%` },
   position: { label: 'Ort. pozisyon', format: fmt.pos, axis: (v) => v, invert: true },
+  // CrabRank ziyaretçi takibi
+  sessions: { label: 'Oturum', format: fmt.num, axis: fmt.compact, integer: true },
+  visitors: { label: 'Ziyaretçi', format: fmt.num, axis: fmt.compact, integer: true },
+  conversions: { label: 'Dönüşüm', format: fmt.num, axis: fmt.compact, integer: true },
 };
 
 export const UPDATE_COLORS = { core: 'var(--warning)', spam: 'var(--critical)', other: 'var(--text-3)' };
@@ -94,7 +98,7 @@ function TrendChart({ data, metric = 'clicks', height = 280, annotations }) {
         />
         <YAxis
           tickFormatter={m.axis} tickLine={false} axisLine={false} width={48}
-          reversed={m.invert} domain={m.invert ? [1, 'auto'] : [0, 'auto']} allowDecimals={metric !== 'clicks' && metric !== 'impressions'}
+          reversed={m.invert} domain={m.invert ? [1, 'auto'] : [0, 'auto']} allowDecimals={metric !== 'clicks' && metric !== 'impressions' && !m.integer}
         />
         {marks?.updates.map((u) => (
           <ReferenceArea key={u.name} x1={u.x1} x2={u.x2} fill={UPDATE_COLORS[u.kind]} fillOpacity={0.09} strokeOpacity={0} ifOverflow="hidden" />

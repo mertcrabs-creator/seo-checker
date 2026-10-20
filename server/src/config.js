@@ -47,6 +47,10 @@ const schema = z.object({
   SERP_QUOTA_RESERVE: z.coerce.number().int().min(0).max(1000).default(20),
   SERP_AI_OVERVIEW_FETCH: z.enum(['true', 'false', '1', '0']).default('true').transform((v) => v === 'true' || v === '1'),
   AUTOCOMPLETE_ENABLED: z.enum(['true', 'false', '1', '0']).default('true').transform((v) => v === 'true' || v === '1'),
+  // Takip scriptinin (CrabRank) ve veri toplama ucunun herkese açık adresi; boşsa CLIENT_ORIGIN (API aynı origin'den /api ile sunuluyorsa)
+  TRACKING_PUBLIC_URL: z.union([z.string().url(), z.literal('')]).optional().default(''),
+  TRACKING_RETENTION_DAYS: z.coerce.number().int().min(7).max(800).default(90),
+  TRACKING_PAGEVIEW_DAYS: z.coerce.number().int().min(1).max(400).default(30),
 });
 
 const parsed = schema.safeParse(process.env);
@@ -114,4 +118,9 @@ export const config = Object.freeze({
   // CrUX History API anahtarı (yoksa PageSpeed anahtarı denenir; ikisi aynı Google Cloud projesinden olabilir)
   cruxKey: env.CRUX_API_KEY || env.PAGESPEED_API_KEY,
   autocompleteEnabled: env.AUTOCOMPLETE_ENABLED,
+  tracking: {
+    publicUrl: (env.TRACKING_PUBLIC_URL || env.CLIENT_ORIGIN.split(',')[0]).trim().replace(/\/$/, ''),
+    retentionDays: env.TRACKING_RETENTION_DAYS,
+    pageviewDays: Math.min(env.TRACKING_PAGEVIEW_DAYS, env.TRACKING_RETENTION_DAYS),
+  },
 });

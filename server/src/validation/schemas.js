@@ -378,3 +378,61 @@ export const adminUserUpdateSchema = z.object({
   domainIds: domainIdList.optional(),
 });
 export const adminUserIdParam = z.object({ userId: z.string().uuid() });
+
+// ------------------------------------------------------------------ Ziyaretçi takibi (CrabRank)
+const TRACKING_DAYS = [1, 7, 28, 90, 180, 365];
+const trackingDays = z.coerce.number().int().refine((d) => TRACKING_DAYS.includes(d), 'Geçersiz tarih aralığı').default(28);
+export const TRACKING_CHANNELS = ['organic', 'ai', 'paid', 'social', 'email', 'referral', 'direct'];
+export const TRACKING_CONVERSION_KINDS = ['phone', 'whatsapp', 'email', 'form', 'custom'];
+
+/** "ornek.com" veya "*.ornek.com" */
+const allowedHost = z.string().trim().max(260).transform((v, ctx) => {
+  const wildcard = v.startsWith('*.');
+  const parsed = hostname.safeParse(wildcard ? v.slice(2) : v);
+  if (!parsed.success) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: `Geçersiz alan adı: ${v.slice(0, 60)}` });
+    return z.NEVER;
+  }
+  return wildcard ? `*.${parsed.data}` : parsed.data;
+});
+
+export const trackingUpdateSchema = z
+  .object({
+    enabled: z.boolean().optional(),
+    allowedHosts: z.array(allowedHost).max(20, 'En fazla 20 ek alan adı eklenebilir').transform((a) => [...new Set(a)]).optional(),
+  })
+  .refine((v) => v.enabled !== undefined || v.allowedHosts !== undefined, 'Değişiklik yok');
+
+export const trackingRangeQuery = z.object({ days: trackingDays });
+
+export const trackingSessionsQuery = z.object({
+  days: trackingDays,
+  page: z.coerce.number().int().min(1).max(1000).default(1),
+  channel: z.enum(TRACKING_CHANNELS).optional(),
+  converted: z.enum(['true', 'false']).transform((v) => v === 'true').optional(),
+});
+
+// Sitelerdeki script'in gönderdiği toplu olaylar (herkese açık uç: her alan sınırlı ve kırpılır)
+const pvId = z.string().regex(/^[a-z0-9]{12}$/);
+const trackPath = z.string().max(2000).regex(/^\//).transform((v) => v.slice(0, 500));
+const utmValue = z.string().max(500).transform((v) => v.trim().slice(0, 200)).optional();
+const trackEvent = z.discriminatedUnion('t', [
+  z.object({
+    t: z.literal('pv'), id: pvId, p: trackPath, r: z.string().max(2000).optional(), g: z.boolean().optional(),
+    u: z.object({ s: utmValue, m: utmValue, c: utmValue, t: utmValue }).optional(),
+  }),
+  z.object({ t: z.literal('en'), id: pvId, ms: z.number().int().min(0).max(4 * 3_600_000), sc: z.number().int().min(0).max(100) }),
+  z.object({ t: z.literal('cv'), id: pvId, k: z.enum(TRACKING_CONVERSION_KINDS), n: z.string().max(500).transform((v) => v.trim().slice(0, 120)).optional() }),
+  z.object({
+    t: z.literal('wv'), id: pvId,
+    lcp: z.number().int().min(0).max(120_000).optional(), cls: z.number().min(0).max(50).optional(), inp: z.number().int().min(0).max(60_000).optional(),
+  }),
+]);
+export const collectPayload = z.object({
+  k: z.string().regex(/^crk_[A-Za-z0-9]{24}$/),
+  e: z.array(trackEvent).min(1).max(30),
+  w: z.number().int().min(0).max(20_000).optional(),
+  tz: z.string().max(64).optional(),
+  l: z.string().max(35).optional(),
+  wd: z.boolean().optional(),
+});

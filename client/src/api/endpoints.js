@@ -159,6 +159,19 @@ export const insightApi = {
   removeRankDropAnalysis: (domainId, analysisId) => data(http.delete(`/domains/${id(domainId)}/insights/rank-drops/analyses/${id(analysisId)}`)),
 };
 
+/** CrabRank ziyaretçi takibi: takip kodu yönetimi ve raporlar */
+export const trackingApi = {
+  get: (domainId) => data(http.get(`/domains/${id(domainId)}/tracking`)),
+  create: (domainId) => data(http.post(`/domains/${id(domainId)}/tracking`)),
+  update: (domainId, body) => data(http.patch(`/domains/${id(domainId)}/tracking`, body)),
+  rotate: (domainId) => data(http.post(`/domains/${id(domainId)}/tracking/rotate`)),
+  verify: (domainId) => data(http.post(`/domains/${id(domainId)}/tracking/verify`, null, { timeout: 30_000 })),
+  summary: (domainId, params) => data(http.get(`/domains/${id(domainId)}/tracking/summary`, { params })),
+  keywords: (domainId, params) => data(http.get(`/domains/${id(domainId)}/tracking/keywords`, { params })),
+  sessions: (domainId, params) => data(http.get(`/domains/${id(domainId)}/tracking/sessions`, { params })),
+  session: (domainId, sessionId) => data(http.get(`/domains/${id(domainId)}/tracking/sessions/${id(sessionId)}`)),
+};
+
 export const keywordApi = {
   list: (params) => data(http.get('/keywords', { params })),
   overview: (params) => data(http.get('/keywords/overview', { params })),

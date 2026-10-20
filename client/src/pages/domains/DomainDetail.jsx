@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-  Activity, ArrowLeft, Award, ExternalLink, FileText, Gauge, History, KeyRound, LayoutDashboard, Lightbulb, FileCheck2, FileBarChart, Link2, MapPin, Microscope, RefreshCw, Settings2, Trash2, Trophy,
+  Activity, ArrowLeft, Award, ExternalLink, FileText, Gauge, History, KeyRound, LayoutDashboard, Lightbulb, FileCheck2, FileBarChart, Link2, MapPin, Microscope, Radar, RefreshCw, Settings2, Trash2, Trophy,
 } from 'lucide-react';
 import { lazy, Suspense, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
@@ -31,6 +31,7 @@ const TABS = [
     key: 'pages', label: 'Sayfalar', icon: FileText,
     Comp: lazy(() => import('./tabs/PagesTab')), SiteComp: lazy(() => import('./site/SitePages')),
   },
+  { key: 'visitors', label: 'Ziyaretçiler', icon: Radar, Comp: lazy(() => import('./visitors/VisitorsTab')) },
   { key: 'sources', label: 'Ülke & Cihaz', icon: MapPin, Comp: lazy(() => import('./tabs/SourcesTab')), gscOnly: true },
   { key: 'index', label: 'İndeksleme', icon: FileCheck2, Comp: lazy(() => import('./tabs/IndexTab')), gscOnly: true },
   { key: 'authority', label: 'Otorite', icon: Award, Comp: lazy(() => import('./tabs/AuthorityTab')) },
